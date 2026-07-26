@@ -164,27 +164,77 @@ struct ContentView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 18) {
-            Image("WOSLogo")
-                .resizable()
-                .renderingMode(.original)
-                .scaledToFit()
-                .frame(maxWidth: 320)
-                .accessibilityLabel("WallofSound AB")
+        ScrollView {
+            VStack(spacing: 18) {
+                Image("WOSLogo")
+                    .resizable()
+                    .renderingMode(.original)
+                    .scaledToFit()
+                    .frame(maxWidth: 320)
+                    .accessibilityLabel("WallofSound AB")
 
-            Text("WOS Viewer")
-                .font(.title2.weight(.semibold))
+                Text("WOS Viewer")
+                    .font(.title2.weight(.semibold))
 
-            Text("WallofSound feature viewer — ladda wav / mp3 / m4a och visa RMS, Novelty, Spectral Centroid och ZCR.\nDu kan också öppna en färdig feature-CSV.")
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: 520)
+                Text("WallofSound feature viewer — ladda wav / mp3 / m4a och visa RMS, Novelty, Spectral Centroid och ZCR.\nDu kan också öppna en färdig feature-CSV.")
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: 520)
 
-            Button("Öppna fil…") { model.openPanel() }
-                .buttonStyle(.borderedProminent)
+                Button("Öppna fil…") { model.openPanel() }
+                    .buttonStyle(.borderedProminent)
+
+                featureGlossary
+                    .frame(maxWidth: 560)
+                    .padding(.top, 8)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
+    }
+
+    private var featureGlossary: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Vad mäter graferna?")
+                .font(.headline)
+
+            glossaryRow(
+                title: "RMS Energy",
+                text: "Övergripande ljudstyrka / intensitet."
+            )
+            glossaryRow(
+                title: "Spectral Centroid",
+                text: "Upplevd ljusstyrka i klangen (högre värde = ljusare)."
+            )
+            glossaryRow(
+                title: "Zero-Crossing Rate (ZCR)",
+                text: "Grad av brusighet kontra tonalitet (högre = brusigare / mer perkussivt, lägre = mer tonalt / uthållet)."
+            )
+            glossaryRow(
+                title: "Novelty Curve",
+                text: "Takt av tydliga ljudförändringar / anslag (toppar betyder “nyhet” eller aktivitet)."
+            )
+            glossaryRow(
+                title: "MFCCs",
+                text: "Mel-Frequency Cepstral Coefficients — en kompakt beskrivning av klangfärg / textur. (Visas inte i plottytan ännu.)"
+            )
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func glossaryRow(title: String, text: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+            Text(text)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 
