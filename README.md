@@ -1,19 +1,17 @@
 # WOS Viewer
 
-**WOS** = WallofSound. Fristående macOS-app från WallofSound AB för feature-plottar från ljudfiler (inspirerad av SEMA).
+**WOS** = WallofSound. Fristående macOS-app från WallofSound AB för feature-plottar och spektromorfologisk **score**-analys från ljudfiler (inspirerad av SEMA + Thoresen/Parmerud).
 
 ## Funktioner
 
-- Öppna **wav / mp3 / m4a** (eller AIFF)
-- Extraherar:
-  - RMS Energy
-  - Novelty (spectral flux)
-  - Spectral Centroid
-  - Zero-Crossing Rate
-- Visar fyra paneler i SEMA-stil
-- Sparar automatiskt en CSV (`*.wos.csv`) bredvid ljudfilen
-- Kan öppna befintlig SEMA-/WOS-CSV och bara plotta
+- Öppna **wav / mp3 / m4a** (eller AIFF / CSV)
+- **Features:** RMS, Novelty, Spectral Centroid, ZCR, MFCC₁
+- **Score:** auto-segmentering → föreslagna ljudobjekt, time-fields, dynamic forms, brackets
+- Symbolpalett (Thoresen-inspirerad, förenklad) + manuell placering
+- Sparar `*.wos.csv` och `*.wosscore.json` bredvid källfilen
 - WallofSound-ikon + logotyp
+
+Se `DESIGN.md` för datamodell och utvecklingsplan.
 
 ## Krav
 

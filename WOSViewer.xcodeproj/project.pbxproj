@@ -8,7 +8,10 @@
 
 /* Begin PBXBuildFile section */
 		08977185B752342BB63A2135 /* AudioAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7468044CBA915323948D96A1 /* AudioAnalyzer.swift */; };
+		0AC0FAE78D0392FB51C1877D /* ScoreCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C793D2994B939619B3670F4 /* ScoreCanvasView.swift */; };
+		2CA4A3ADEAFCF1C88A1B4804 /* ScoreModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89275C593D2365CF1D5D8204 /* ScoreModels.swift */; };
 		3710D191F73EEC1A82F047D9 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B63AFDADE04A6DC48812F6D7 /* Assets.xcassets */; };
+		879D3530FCB2DA9DD558DEEC /* ScoreBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AF500E01A6AD2B02F45EFD6 /* ScoreBuilder.swift */; };
 		8E0890A7378755B90AEA0291 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01812D672C049831455BE0BB /* Models.swift */; };
 		C480AB2FCE3086359DD68D57 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98420FB07A374FBE55521BFF /* ContentView.swift */; };
 		F4D98AFAF0E0339DA35F6B5F /* WOSViewerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0FBD7D89302BAA888A86F4A /* WOSViewerApp.swift */; };
@@ -16,10 +19,13 @@
 
 /* Begin PBXFileReference section */
 		01812D672C049831455BE0BB /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		1AF500E01A6AD2B02F45EFD6 /* ScoreBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreBuilder.swift; sourceTree = "<group>"; };
 		49556E871C1D52B1EA43E701 /* WOSViewer.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WOSViewer.entitlements; sourceTree = "<group>"; };
 		4E72C55D2F192ED2783DA149 /* WOSViewer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WOSViewer.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6C793D2994B939619B3670F4 /* ScoreCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreCanvasView.swift; sourceTree = "<group>"; };
 		6D6A73847795C479E3211A50 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		7468044CBA915323948D96A1 /* AudioAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioAnalyzer.swift; sourceTree = "<group>"; };
+		89275C593D2365CF1D5D8204 /* ScoreModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreModels.swift; sourceTree = "<group>"; };
 		98420FB07A374FBE55521BFF /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		B63AFDADE04A6DC48812F6D7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F0FBD7D89302BAA888A86F4A /* WOSViewerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WOSViewerApp.swift; sourceTree = "<group>"; };
@@ -34,6 +40,9 @@
 				98420FB07A374FBE55521BFF /* ContentView.swift */,
 				6D6A73847795C479E3211A50 /* Info.plist */,
 				01812D672C049831455BE0BB /* Models.swift */,
+				1AF500E01A6AD2B02F45EFD6 /* ScoreBuilder.swift */,
+				6C793D2994B939619B3670F4 /* ScoreCanvasView.swift */,
+				89275C593D2365CF1D5D8204 /* ScoreModels.swift */,
 				49556E871C1D52B1EA43E701 /* WOSViewer.entitlements */,
 				F0FBD7D89302BAA888A86F4A /* WOSViewerApp.swift */,
 			);
@@ -126,6 +135,9 @@
 				08977185B752342BB63A2135 /* AudioAnalyzer.swift in Sources */,
 				C480AB2FCE3086359DD68D57 /* ContentView.swift in Sources */,
 				8E0890A7378755B90AEA0291 /* Models.swift in Sources */,
+				879D3530FCB2DA9DD558DEEC /* ScoreBuilder.swift in Sources */,
+				0AC0FAE78D0392FB51C1877D /* ScoreCanvasView.swift in Sources */,
+				2CA4A3ADEAFCF1C88A1B4804 /* ScoreModels.swift in Sources */,
 				F4D98AFAF0E0339DA35F6B5F /* WOSViewerApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

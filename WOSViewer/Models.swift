@@ -12,6 +12,7 @@ struct FeatureSeries: Identifiable {
         case novelty = "Novelty Curve (Onset Strength Function)"
         case centroid = "Spectral Centroid (Brightness)"
         case zcr = "Zero-Crossing Rate (Noisiness/Percussiveness)"
+        case mfcc1 = "MFCC₁ (Timbral Texture Cue)"
 
         var id: String { rawValue }
 
@@ -21,15 +22,7 @@ struct FeatureSeries: Identifiable {
             case .novelty: return "Novelty Value"
             case .centroid: return "Frequency (Hz)"
             case .zcr: return "ZCR"
-            }
-        }
-
-        var colorName: String {
-            switch self {
-            case .rms: return "rms"
-            case .novelty: return "novelty"
-            case .centroid: return "centroid"
-            case .zcr: return "zcr"
+            case .mfcc1: return "MFCC₁"
             }
         }
     }
@@ -42,12 +35,15 @@ struct FeatureSeries: Identifiable {
 struct AnalysisResult: Identifiable {
     let id = UUID()
     let sourceName: String
+    let sourceURL: URL?
     let sampleRate: Double
     let duration: Double
     let hopLength: Int
     let frameLength: Int
     let series: [FeatureSeries]
     let csvURL: URL?
+    let score: ScoreDocument
+    let scoreURL: URL?
 
     var title: String {
         "WOS Viewer — Quantitative Analysis of \(sourceName)"

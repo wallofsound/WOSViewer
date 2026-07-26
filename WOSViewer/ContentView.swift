@@ -5,7 +5,15 @@ import AppKit
 
 @MainActor
 final class AnalysisViewModel: ObservableObject {
+    enum MainTab: String, CaseIterable, Identifiable {
+        case features = "Features"
+        case score = "Score"
+        var id: String { rawValue }
+    }
+
     @Published var result: AnalysisResult?
+    @Published var score: ScoreDocument?
+    @Published var selectedTab: MainTab = .features
     @Published var isAnalyzing = false
     @Published var statusMessage = "Öppna en ljudfil (wav / mp3 / m4a) eller en feature-CSV."
     @Published var errorMessage: String?
@@ -46,6 +54,7 @@ final class AnalysisViewModel: ObservableObject {
         errorMessage = nil
         statusMessage = "Analyserar \(url.lastPathComponent)…"
         result = nil
+        score = nil
 
         let accessed = url.startAccessingSecurityScopedResource()
         defer {
@@ -64,14 +73,34 @@ final class AnalysisViewModel: ObservableObject {
                 }.value
             }
             result = analysis
+            score = analysis.score
+            selectedTab = .features
+            let objCount = analysis.score.objects.count
             if let csv = analysis.csvURL, ext != "csv" {
-                statusMessage = "Klar. CSV sparad: \(csv.lastPathComponent)"
+                statusMessage = "Klar. CSV + score (\(objCount) objekt)."
+                _ = csv
             } else {
-                statusMessage = "Klar — \(analysis.series.first?.points.count ?? 0) ramar, \(String(format: "%.1f", analysis.duration)) s"
+                statusMessage = "Klar — \(analysis.series.first?.points.count ?? 0) ramar, \(objCount) score-objekt"
             }
         } catch {
             errorMessage = error.localizedDescription
             statusMessage = "Misslyckades"
+        }
+    }
+
+    func saveScore() {
+        guard var doc = score else { return }
+        doc.sourceName = result?.sourceName ?? doc.sourceName
+        score = doc
+        if let url = result?.sourceURL ?? result?.csvURL {
+            do {
+                let out = try ScoreStore.save(doc, beside: url)
+                statusMessage = "Score sparad: \(out.lastPathComponent)"
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        } else {
+            errorMessage = "Ingen källfil att spara score bredvid."
         }
     }
 
@@ -110,8 +139,33 @@ struct ContentView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let result = model.result {
-                FeaturePlotView(result: result)
-                    .padding(12)
+                VStack(spacing: 0) {
+                    Picker("Vy", selection: $model.selectedTab) {
+                        ForEach(AnalysisViewModel.MainTab.allCases) { tab in
+                            Text(tab.rawValue).tag(tab)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+
+                    switch model.selectedTab {
+                    case .features:
+                        ScrollView {
+                            FeaturePlotView(result: result)
+                                .padding(12)
+                        }
+                    case .score:
+                        ScoreEditorView(
+                            score: Binding(
+                                get: { model.score ?? result.score },
+                                set: { model.score = $0 }
+                            ),
+                            sourceURL: result.sourceURL,
+                            onSave: { _ in model.saveScore() }
+                        )
+                    }
+                }
             } else {
                 emptyState
             }
@@ -176,7 +230,7 @@ struct ContentView: View {
                 Text("WOS Viewer")
                     .font(.title2.weight(.semibold))
 
-                Text("WallofSound feature viewer — ladda wav / mp3 / m4a och visa RMS, Novelty, Spectral Centroid och ZCR.\nDu kan också öppna en färdig feature-CSV.")
+                Text("WallofSound feature + score viewer — ladda wav / mp3 / m4a för features och spektromorfologisk score.\nDu kan också öppna en färdig feature-CSV.")
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: 520)
@@ -217,7 +271,7 @@ struct ContentView: View {
             )
             glossaryRow(
                 title: "MFCCs",
-                text: "Mel-Frequency Cepstral Coefficients — en kompakt beskrivning av klangfärg / textur. (Visas inte i plottytan ännu.)"
+                text: "Mel-Frequency Cepstral Coefficients — kompakt beskrivning av klangfärg / textur. MFCC₁ visas som kurva; används också vid score-förslag."
             )
         }
         .padding(16)
@@ -258,7 +312,8 @@ struct FeaturePlotView: View {
         .rms: Color(red: 0.10, green: 0.20, blue: 0.55),
         .novelty: Color(red: 0.15, green: 0.55, blue: 0.25),
         .centroid: Color(red: 0.55, green: 0.15, blue: 0.12),
-        .zcr: Color(red: 0.55, green: 0.15, blue: 0.55)
+        .zcr: Color(red: 0.55, green: 0.15, blue: 0.55),
+        .mfcc1: Color(red: 0.15, green: 0.45, blue: 0.55)
     ]
 
     var body: some View {
@@ -329,9 +384,15 @@ struct FeaturePlotView: View {
     private func yDomain(for series: FeatureSeries) -> ClosedRange<Double> {
         let values = series.points.map(\.value)
         let maxV = values.max() ?? 1
-        let minV = min(0, values.min() ?? 0)
+        let minV = values.min() ?? 0
+        // MFCC can be negative
+        if series.kind == .mfcc1 {
+            let pad = max(abs(maxV - minV) * 0.08, 0.1)
+            return (minV - pad)...(maxV + pad)
+        }
+        let floor = min(0, minV)
         let pad = max(maxV * 0.08, 0.001)
-        return minV...(maxV + pad)
+        return floor...(maxV + pad)
     }
 
     private func downsample(_ points: [FeaturePoint], maxPoints: Int) -> [FeaturePoint] {
