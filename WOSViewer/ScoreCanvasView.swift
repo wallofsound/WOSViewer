@@ -8,10 +8,26 @@ struct ScoreEditorView: View {
     @State private var selectedSymbol: ScoreSymbolKind = .pitchedSustained
     @State private var selectedObjectID: ScoreObject.ID?
     @State private var pixelsPerSecond: CGFloat = 28
+    @State private var placementArmed = false
+
+    private var selectedBinding: Binding<ScoreObject?> {
+        Binding(
+            get: {
+                guard let id = selectedObjectID else { return nil }
+                return score.objects.first { $0.id == id }
+            },
+            set: { updated in
+                guard let updated,
+                      let idx = score.objects.firstIndex(where: { $0.id == updated.id }) else { return }
+                score.objects[idx] = updated
+                score.objects.sort { $0.start < $1.start }
+            }
+        )
+    }
 
     var body: some View {
         HStack(spacing: 0) {
-            SymbolPaletteView(selected: $selectedSymbol)
+            SymbolPaletteView(selected: $selectedSymbol, placementArmed: $placementArmed)
                 .frame(width: 168)
 
             Divider()
@@ -24,12 +40,26 @@ struct ScoreEditorView: View {
                         score: $score,
                         selectedSymbol: selectedSymbol,
                         selectedObjectID: $selectedObjectID,
-                        pixelsPerSecond: pixelsPerSecond
+                        pixelsPerSecond: pixelsPerSecond,
+                        placementArmed: $placementArmed
                     )
                     .padding(12)
                 }
                 .background(Color(nsColor: .windowBackgroundColor))
             }
+
+            Divider()
+
+            ScoreInspectorView(
+                object: selectedBinding,
+                duration: score.duration,
+                onDelete: {
+                    guard let id = selectedObjectID else { return }
+                    score.objects.removeAll { $0.id == id }
+                    selectedObjectID = nil
+                }
+            )
+            .frame(width: 220)
         }
     }
 
@@ -40,6 +70,12 @@ struct ScoreEditorView: View {
             Text("\(score.objects.count) objekt")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            if placementArmed {
+                Text("Placeringsläge")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+            }
 
             Spacer()
 
@@ -54,11 +90,13 @@ struct ScoreEditorView: View {
                 selectedObjectID = nil
             }
             .disabled(selectedObjectID == nil)
+            .keyboardShortcut(.delete, modifiers: [])
 
             Button("Spara score") {
                 onSave(score)
             }
             .buttonStyle(.borderedProminent)
+            .keyboardShortcut("s", modifiers: .command)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -67,6 +105,7 @@ struct ScoreEditorView: View {
 
 struct SymbolPaletteView: View {
     @Binding var selected: ScoreSymbolKind
+    @Binding var placementArmed: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -76,9 +115,14 @@ struct SymbolPaletteView: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
 
+            Toggle("Placera med klick", isOn: $placementArmed)
+                .toggleStyle(.switch)
+                .font(.caption)
+
             ForEach(ScoreSymbolKind.allCases) { kind in
                 Button {
                     selected = kind
+                    placementArmed = true
                 } label: {
                     HStack(spacing: 8) {
                         ScoreSymbolGlyph(kind: kind, filled: true, size: 18)
@@ -86,7 +130,7 @@ struct SymbolPaletteView: View {
                             Text(kind.labelSV)
                                 .font(.caption)
                                 .foregroundStyle(.primary)
-                            Text("\(kind.mass.labelSV)")
+                            Text(kind.mass.labelSV)
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -95,7 +139,7 @@ struct SymbolPaletteView: View {
                     .padding(6)
                     .background(
                         RoundedRectangle(cornerRadius: 6)
-                            .fill(selected == kind ? Color.accentColor.opacity(0.15) : Color.clear)
+                            .fill(selected == kind && placementArmed ? Color.accentColor.opacity(0.15) : Color.clear)
                     )
                 }
                 .buttonStyle(.plain)
@@ -103,7 +147,7 @@ struct SymbolPaletteView: View {
 
             Spacer()
 
-            Text("Klicka i canvas för att placera. Dubbelklick växlar fylld/öppen.")
+            Text("Dra objekt för att flytta. Handtag för längd. Inspector till höger.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -113,13 +157,112 @@ struct SymbolPaletteView: View {
     }
 }
 
+struct ScoreInspectorView: View {
+    @Binding var object: ScoreObject?
+    var duration: Double
+    var onDelete: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Inspector")
+                .font(.headline)
+
+            if let obj = Binding($object) {
+                Group {
+                    labeled("Etikett") {
+                        TextField("A", text: obj.label)
+                    }
+
+                    labeled("Symbol") {
+                        Picker("Symbol", selection: obj.symbol) {
+                            ForEach(ScoreSymbolKind.allCases) { kind in
+                                Text(kind.labelSV).tag(kind)
+                            }
+                        }
+                        .labelsHidden()
+                    }
+
+                    Toggle("Fylld (annars öppen)", isOn: obj.filled)
+
+                    labeled("Lane (0=hög)") {
+                        Stepper(value: obj.lane, in: 0...2) {
+                            Text("\(obj.wrappedValue.lane)")
+                        }
+                    }
+
+                    labeled("Start (s)") {
+                        TextField(
+                            "start",
+                            value: obj.start,
+                            format: .number.precision(.fractionLength(2))
+                        )
+                    }
+
+                    labeled("Slut (s)") {
+                        TextField(
+                            "end",
+                            value: obj.end,
+                            format: .number.precision(.fractionLength(2))
+                        )
+                    }
+
+                    labeled("Notering") {
+                        TextEditor(text: obj.note)
+                            .font(.caption)
+                            .frame(minHeight: 70)
+                            .border(Color.secondary.opacity(0.3))
+                    }
+
+                    if obj.wrappedValue.autoGenerated {
+                        Text("Auto-genererad — redigera fritt")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Button("Radera objekt", role: .destructive, action: onDelete)
+                }
+                .onChange(of: object?.start) { _, _ in clampSelection() }
+                .onChange(of: object?.end) { _, _ in clampSelection() }
+            } else {
+                Text("Inget objekt valt.")
+                    .foregroundStyle(.secondary)
+                    .font(.callout)
+                Text("Klicka ett objekt i scoret, eller aktivera placering och klicka i canvas.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+        .padding(12)
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    private func labeled<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            content()
+        }
+    }
+
+    private func clampSelection() {
+        guard var obj = object else { return }
+        obj.start = min(max(0, obj.start), max(0, duration - 0.05))
+        obj.end = min(max(obj.start + 0.05, obj.end), duration)
+        object = obj
+    }
+}
+
 struct ScoreCanvasView: View {
     @Binding var score: ScoreDocument
     var selectedSymbol: ScoreSymbolKind
     @Binding var selectedObjectID: ScoreObject.ID?
     var pixelsPerSecond: CGFloat
+    @Binding var placementArmed: Bool
 
-    private let laneHeight: CGFloat = 52
+    private let laneHeight: CGFloat = 56
     private let laneCount = 3
     private let envelopeHeight: CGFloat = 70
     private let rulerHeight: CGFloat = 24
@@ -141,7 +284,6 @@ struct ScoreCanvasView: View {
                 .fill(Color(white: 0.97))
                 .frame(width: canvasWidth, height: totalHeight)
 
-            // Time fields
             ForEach(score.timeFields) { field in
                 Rectangle()
                     .fill(field.color.opacity(0.45))
@@ -150,13 +292,12 @@ struct ScoreCanvasView: View {
                         height: objectAreaHeight
                     )
                     .offset(x: x(field.start), y: rulerHeight)
+                    .allowsHitTesting(false)
             }
 
-            // Grid + ruler
             ruler
-                .offset(y: 0)
+                .allowsHitTesting(false)
 
-            // Lane lines
             ForEach(0..<laneCount, id: \.self) { lane in
                 Path { path in
                     let y = rulerHeight + CGFloat(lane + 1) * laneHeight
@@ -164,30 +305,61 @@ struct ScoreCanvasView: View {
                     path.addLine(to: CGPoint(x: canvasWidth, y: y))
                 }
                 .stroke(Color.gray.opacity(0.25), lineWidth: 0.5)
+                .allowsHitTesting(false)
             }
 
-            // Objects
             ForEach(score.objects) { obj in
-                objectView(obj)
+                DraggableScoreObjectView(
+                    object: binding(for: obj.id),
+                    selected: selectedObjectID == obj.id,
+                    pixelsPerSecond: pixelsPerSecond,
+                    laneHeight: laneHeight,
+                    rulerHeight: rulerHeight,
+                    laneCount: laneCount,
+                    scoreDuration: score.duration,
+                    onSelect: {
+                        selectedObjectID = obj.id
+                        placementArmed = false
+                    }
+                )
             }
 
-            // Dynamic forms
             ForEach(score.dynamicForms) { form in
                 dynamicFormView(form)
                     .offset(y: rulerHeight + objectAreaHeight)
+                    .allowsHitTesting(false)
             }
 
-            // Brackets
             ForEach(score.brackets) { bracket in
                 bracketView(bracket)
                     .offset(y: rulerHeight + objectAreaHeight + envelopeHeight)
+                    .allowsHitTesting(false)
             }
         }
         .frame(width: canvasWidth, height: totalHeight, alignment: .topLeading)
         .contentShape(Rectangle())
         .onTapGesture { location in
+            guard placementArmed else {
+                selectedObjectID = nil
+                return
+            }
             placeObject(at: location)
+            placementArmed = false
         }
+    }
+
+    private func binding(for id: ScoreObject.ID) -> Binding<ScoreObject> {
+        Binding(
+            get: {
+                score.objects.first { $0.id == id }
+                    ?? ScoreObject(label: "?", start: 0, end: 0.1, symbol: .pitchedImpulse)
+            },
+            set: { updated in
+                guard let idx = score.objects.firstIndex(where: { $0.id == id }) else { return }
+                score.objects[idx] = updated
+                score.objects.sort { $0.start < $1.start }
+            }
+        )
     }
 
     private var ruler: some View {
@@ -213,51 +385,10 @@ struct ScoreCanvasView: View {
         .frame(width: canvasWidth, height: rulerHeight, alignment: .topLeading)
     }
 
-    private func objectView(_ obj: ScoreObject) -> some View {
-        let w = max(18, x(obj.end) - x(obj.start))
-        let y = rulerHeight + CGFloat(obj.lane) * laneHeight + 10
-        let selected = selectedObjectID == obj.id
-
-        return HStack(spacing: 4) {
-            Text(obj.label)
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
-            ScoreSymbolGlyph(kind: obj.symbol, filled: obj.filled, size: 16)
-            if w > 50 {
-                Rectangle()
-                    .fill(obj.filled ? Color.primary : Color.clear)
-                    .frame(height: obj.filled ? 2 : 1)
-                    .overlay(
-                        Rectangle()
-                            .stroke(style: StrokeStyle(lineWidth: 1, dash: obj.filled ? [] : [4, 3]))
-                            .foregroundStyle(Color.primary)
-                    )
-            }
-        }
-        .padding(.horizontal, 4)
-        .frame(width: w, height: 32, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 4)
-                .stroke(selected ? Color.orange : Color.clear, lineWidth: 2)
-        )
-        .offset(x: x(obj.start), y: y)
-        .gesture(
-            TapGesture(count: 2).onEnded {
-                if let idx = score.objects.firstIndex(where: { $0.id == obj.id }) {
-                    score.objects[idx].filled.toggle()
-                }
-            }
-        )
-        .simultaneousGesture(
-            TapGesture(count: 1).onEnded {
-                selectedObjectID = obj.id
-            }
-        )
-    }
-
     private func dynamicFormView(_ form: DynamicForm) -> some View {
         let w = max(8, x(form.end) - x(form.start))
         let h = envelopeHeight - 10
-        return Canvas { context, size in
+        return Canvas { context, _ in
             var path = Path()
             switch form.shape {
             case .crescendo:
@@ -308,14 +439,12 @@ struct ScoreCanvasView: View {
     }
 
     private func placeObject(at location: CGPoint) {
-        // Ignore taps on toolbar-ish top ruler only for placement if too high? Allow all.
         let t = max(0, min(score.duration - 0.5, Double((location.x - 8) / pixelsPerSecond)))
         let laneY = location.y - rulerHeight
         guard laneY >= 0, laneY < objectAreaHeight else { return }
         let lane = min(laneCount - 1, max(0, Int(laneY / laneHeight)))
-        let label = nextLabel()
         let obj = ScoreObject(
-            label: label,
+            label: nextLabel(),
             start: t,
             end: min(score.duration, t + 1.5),
             lane: lane,
@@ -339,6 +468,140 @@ struct ScoreCanvasView: View {
     }
 }
 
+// MARK: - Draggable object
+
+private struct DraggableScoreObjectView: View {
+    @Binding var object: ScoreObject
+    var selected: Bool
+    var pixelsPerSecond: CGFloat
+    var laneHeight: CGFloat
+    var rulerHeight: CGFloat
+    var laneCount: Int
+    var scoreDuration: Double
+    var onSelect: () -> Void
+
+    @State private var dragStart: ScoreObject?
+    @State private var resizeEdge: ResizeEdge?
+
+    private enum ResizeEdge {
+        case start, end
+    }
+
+    private var width: CGFloat {
+        max(28, CGFloat(object.end - object.start) * pixelsPerSecond)
+    }
+
+    private var x: CGFloat {
+        CGFloat(object.start) * pixelsPerSecond + 8
+    }
+
+    private var y: CGFloat {
+        rulerHeight + CGFloat(object.lane) * laneHeight + 10
+    }
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            HStack(spacing: 4) {
+                Text(object.label)
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                ScoreSymbolGlyph(kind: object.symbol, filled: object.filled, size: 16)
+                if width > 54 {
+                    Rectangle()
+                        .fill(object.filled ? Color.primary : Color.clear)
+                        .frame(height: object.filled ? 2 : 1)
+                        .overlay(
+                            Rectangle()
+                                .stroke(
+                                    style: StrokeStyle(lineWidth: 1, dash: object.filled ? [] : [4, 3])
+                                )
+                                .foregroundStyle(Color.primary)
+                        )
+                }
+            }
+            .padding(.horizontal, 6)
+            .frame(width: width, height: 34, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.white.opacity(0.85))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(selected ? Color.orange : Color.primary.opacity(0.35), lineWidth: selected ? 2 : 1)
+            )
+
+            if selected {
+                resizeHandle
+                    .offset(x: -4)
+                    .gesture(resizeGesture(edge: .start))
+                resizeHandle
+                    .offset(x: width - 4)
+                    .gesture(resizeGesture(edge: .end))
+            }
+        }
+        .frame(width: width, height: 34, alignment: .leading)
+        .offset(x: x, y: y)
+        .highPriorityGesture(
+            DragGesture(minimumDistance: 3)
+                .onChanged { value in
+                    onSelect()
+                    if dragStart == nil {
+                        dragStart = object
+                        resizeEdge = nil
+                    }
+                    guard let origin = dragStart else { return }
+                    let dt = Double(value.translation.width / pixelsPerSecond)
+                    let dLane = Int(round(Double(value.translation.height / laneHeight)))
+                    let dur = origin.end - origin.start
+                    var start = origin.start + dt
+                    start = min(max(0, start), max(0, scoreDuration - dur))
+                    object.start = start
+                    object.end = start + dur
+                    object.lane = min(laneCount - 1, max(0, origin.lane + dLane))
+                    object.autoGenerated = false
+                }
+                .onEnded { _ in
+                    dragStart = nil
+                }
+        )
+        .onTapGesture {
+            onSelect()
+        }
+    }
+
+    private var resizeHandle: some View {
+        RoundedRectangle(cornerRadius: 2)
+            .fill(Color.orange)
+            .frame(width: 8, height: 22)
+            .contentShape(Rectangle())
+    }
+
+    private func resizeGesture(edge: ResizeEdge) -> some Gesture {
+        DragGesture(minimumDistance: 1)
+            .onChanged { value in
+                onSelect()
+                if dragStart == nil {
+                    dragStart = object
+                    resizeEdge = edge
+                }
+                guard let origin = dragStart, resizeEdge == edge else { return }
+                let dt = Double(value.translation.width / pixelsPerSecond)
+                switch edge {
+                case .start:
+                    let newStart = min(origin.end - 0.08, max(0, origin.start + dt))
+                    object.start = newStart
+                case .end:
+                    let newEnd = max(origin.start + 0.08, min(scoreDuration, origin.end + dt))
+                    object.end = newEnd
+                }
+                object.autoGenerated = false
+            }
+            .onEnded { _ in
+                dragStart = nil
+                resizeEdge = nil
+            }
+    }
+}
+
 struct ScoreSymbolGlyph: View {
     let kind: ScoreSymbolKind
     let filled: Bool
@@ -350,12 +613,12 @@ struct ScoreSymbolGlyph: View {
             let color = Color.primary
             switch kind {
             case .pitchedImpulse:
-                var path = Path(ellipseIn: rect.insetBy(dx: 2, dy: 2))
+                let path = Path(ellipseIn: rect.insetBy(dx: 2, dy: 2))
                 if filled { context.fill(path, with: .color(color)) }
                 else { context.stroke(path, with: .color(color), lineWidth: 1.5) }
             case .pitchedSustained:
                 let head = CGRect(x: rect.minX, y: rect.midY - 4, width: 8, height: 8)
-                var oval = Path(ellipseIn: head)
+                let oval = Path(ellipseIn: head)
                 if filled { context.fill(oval, with: .color(color)) }
                 else { context.stroke(oval, with: .color(color), lineWidth: 1.5) }
                 var line = Path()
@@ -363,12 +626,12 @@ struct ScoreSymbolGlyph: View {
                 line.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
                 context.stroke(line, with: .color(color), lineWidth: 1.5)
             case .complexImpulse:
-                var path = Path(roundedRect: rect.insetBy(dx: 3, dy: 3), cornerRadius: 1)
+                let path = Path(roundedRect: rect.insetBy(dx: 3, dy: 3), cornerRadius: 1)
                 if filled { context.fill(path, with: .color(color)) }
                 else { context.stroke(path, with: .color(color), lineWidth: 1.5) }
             case .complexSustained:
                 let head = CGRect(x: rect.minX, y: rect.midY - 4, width: 8, height: 8)
-                var box = Path(roundedRect: head, cornerRadius: 1)
+                let box = Path(roundedRect: head, cornerRadius: 1)
                 if filled { context.fill(box, with: .color(color)) }
                 else { context.stroke(box, with: .color(color), lineWidth: 1.5) }
                 var line = Path()
@@ -399,7 +662,7 @@ struct ScoreSymbolGlyph: View {
                 for i in 0..<5 {
                     let cx = rect.minX + 3 + CGFloat(i % 3) * 5
                     let cy = rect.minY + 4 + CGFloat(i / 3) * 6
-                    var p = Path(ellipseIn: CGRect(x: cx, y: cy, width: 3, height: 3))
+                    let p = Path(ellipseIn: CGRect(x: cx, y: cy, width: 3, height: 3))
                     context.fill(p, with: .color(color))
                 }
             case .variable:
@@ -410,10 +673,6 @@ struct ScoreSymbolGlyph: View {
                 d.addLine(to: CGPoint(x: rect.midX, y: rect.maxY - 2))
                 d.closeSubpath()
                 context.stroke(d, with: .color(color), lineWidth: 1.5)
-                var arrow = Path()
-                arrow.move(to: CGPoint(x: rect.maxX - 6, y: rect.minY + 2))
-                arrow.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + 6))
-                context.stroke(arrow, with: .color(color), lineWidth: 1.2)
             case .stratified:
                 for i in 0..<3 {
                     var line = Path()
