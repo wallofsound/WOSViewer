@@ -20,20 +20,28 @@
 - macOS 14+
 - Xcode 15+
 
-## Bygg & kör
+## Klona & kör
 
 ```bash
-cd /Users/wallofsoundab/Undervisning/WOSViewer
-xcodegen generate
+git clone git@github.com:wallofsound/WOSViewer.git
+cd WOSViewer
 open WOSViewer.xcodeproj
 ```
 
 I Xcode: scheme **WOSViewer** → Run (⌘R).
 
+### Alternativ: generera projekt med XcodeGen
+
 ```bash
 xcodegen generate
-xcodebuild -scheme WOSViewer -configuration Debug -derivedDataPath ./DerivedData build
-open "./DerivedData/Build/Products/Debug/WOS Viewer.app"
+open WOSViewer.xcodeproj
+```
+
+### Bygg från terminal
+
+```bash
+xcodebuild -scheme WOSViewer -configuration Release -derivedDataPath ./DerivedData build
+open "./DerivedData/Build/Products/Release/WOS Viewer.app"
 ```
 
 ## Branding
