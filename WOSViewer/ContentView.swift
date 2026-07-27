@@ -161,8 +161,9 @@ struct ContentView: View {
                                 get: { model.score ?? result.score },
                                 set: { model.score = $0 }
                             ),
-                            sourceURL: result.sourceURL,
-                            onSave: { _ in model.saveScore() }
+                            sourceURL: result.sourceURL?.pathExtension.lowercased() == "csv" ? nil : result.sourceURL,
+                            onSave: { _ in model.saveScore() },
+                            onStatus: { model.statusMessage = $0 }
                         )
                     }
                 }

@@ -1,16 +1,29 @@
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
+
+enum ScorePresentationMode: String, CaseIterable, Identifiable {
+    case edit = "Edit"
+    case view = "Viewer"
+    var id: String { rawValue }
+}
 
 struct ScoreEditorView: View {
     @Binding var score: ScoreDocument
     var sourceURL: URL?
     var onSave: (ScoreDocument) -> Void
+    var onStatus: ((String) -> Void)? = nil
 
     @State private var selectedSymbol: ScoreSymbolKind = .pitchedSustained
     @State private var selectedObjectID: ScoreObject.ID?
     @State private var pixelsPerSecond: CGFloat = 28
     @State private var placementArmed = false
     @State private var isInteracting = false
+    @State private var presentation: ScorePresentationMode = .edit
+    @StateObject private var player = ScoreAudioPlayer()
     @FocusState private var canvasFocused: Bool
+
+    private var isEditing: Bool { presentation == .edit }
 
     private var selectedBinding: Binding<ScoreObject?> {
         Binding(
@@ -22,7 +35,6 @@ struct ScoreEditorView: View {
                 guard let updated,
                       let idx = score.objects.firstIndex(where: { $0.id == updated.id }) else { return }
                 score.objects[idx] = updated
-                // Aldrig packa ihop tider. Sortera bara visningsordning när vi inte drar.
                 if !isInteracting {
                     score.objects.sort { $0.start < $1.start }
                 }
@@ -32,22 +44,34 @@ struct ScoreEditorView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            SymbolPaletteView(selected: $selectedSymbol, placementArmed: $placementArmed)
-                .frame(width: 168)
-
-            Divider()
+            if isEditing {
+                SymbolPaletteView(selected: $selectedSymbol, placementArmed: $placementArmed)
+                    .frame(width: 168)
+                Divider()
+            }
 
             VStack(spacing: 0) {
                 scoreToolbar
                 Divider()
                 ScrollView([.horizontal, .vertical]) {
                     ScoreCanvasView(
-                        score: $score,
+                        score: score,
                         selectedSymbol: selectedSymbol,
                         selectedObjectID: $selectedObjectID,
                         pixelsPerSecond: pixelsPerSecond,
                         placementArmed: $placementArmed,
                         isInteracting: $isInteracting,
+                        presentation: presentation,
+                        playheadTime: (player.isPlaying || player.currentTime > 0) ? player.currentTime : nil,
+                        onChangeObject: { updated in
+                            guard let idx = score.objects.firstIndex(where: { $0.id == updated.id }) else { return }
+                            score.objects[idx] = updated
+                        },
+                        onPlace: { obj in
+                            score.objects.append(obj)
+                            score.objects.sort { $0.start < $1.start }
+                            selectedObjectID = obj.id
+                        },
                         onInteractionEnded: {
                             score.objects.sort { $0.start < $1.start }
                         }
@@ -59,68 +83,178 @@ struct ScoreEditorView: View {
                 .focusable()
                 .focused($canvasFocused)
                 .onDeleteCommand(perform: deleteSelected)
-                .onAppear { canvasFocused = true }
+                .onAppear {
+                    canvasFocused = true
+                    player.prepare(url: sourceURL)
+                }
                 .onChange(of: selectedObjectID) { _, _ in canvasFocused = true }
+                .onChange(of: sourceURL) { _, url in player.prepare(url: url) }
             }
 
-            Divider()
-
-            ScoreInspectorView(
-                object: selectedBinding,
-                duration: score.duration,
-                onDelete: deleteSelected
-            )
-            .frame(width: 230)
+            if isEditing {
+                Divider()
+                ScoreInspectorView(
+                    object: selectedBinding,
+                    duration: score.duration,
+                    onDelete: deleteSelected,
+                    onPlaySegment: {
+                        if let obj = selectedBinding.wrappedValue {
+                            player.play(from: obj.start, to: obj.end)
+                        }
+                    }
+                )
+                .frame(width: 230)
+            }
         }
         .onAppear { canvasFocused = true }
+        .onDisappear { player.stop() }
     }
 
-    /// Tar bort markerat objekt. Lämnar tidshål — övriga objekt behåller start/slut/etikett.
     private func deleteSelected() {
-        guard let id = selectedObjectID else { return }
+        guard isEditing, let id = selectedObjectID else { return }
         score.objects.removeAll { $0.id == id }
         selectedObjectID = nil
-        // Ingen omsortering av tider, ingen omindexering av etiketter.
     }
 
     private var scoreToolbar: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Text("Score — \(score.sourceName)")
                 .font(.headline)
+                .lineLimit(1)
+
+            Picker("", selection: $presentation) {
+                ForEach(ScorePresentationMode.allCases) { mode in
+                    Text(mode.rawValue).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 160)
+            .onChange(of: presentation) { _, mode in
+                if mode == .view {
+                    placementArmed = false
+                    selectedObjectID = nil
+                }
+            }
+
             Text("\(score.objects.count) objekt")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            if placementArmed {
-                Text("Placeringsläge")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.orange)
+            playbackControls
+
+            Spacer(minLength: 8)
+
+            Slider(value: $pixelsPerSecond, in: 12...80)
+                .frame(width: 100)
+
+            if isEditing {
+                Button("Radera (⌫)") { deleteSelected() }
+                    .disabled(selectedObjectID == nil)
+                    .keyboardShortcut(.delete, modifiers: [])
+
+                Button("Spara") { onSave(score) }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut("s", modifiers: .command)
             }
 
-            Spacer()
-
-            Slider(value: $pixelsPerSecond, in: 12...80) {
-                Text("Zoom")
-            }
-            .frame(width: 140)
-
-            Button("Radera (⌫)") {
-                deleteSelected()
-            }
-            .disabled(selectedObjectID == nil)
-            .help("Tar bort markerat objekt. Övriga behåller sin plats i tiden (hål kvar).")
-            .keyboardShortcut(.delete, modifiers: [])
-
-            Button("Spara score") {
-                onSave(score)
-            }
-            .buttonStyle(.borderedProminent)
-            .keyboardShortcut("s", modifiers: .command)
+            Button("PNG…") { exportScorePNG() }
+                .help("Exporterar score i Viewer-stil (utan editrutor).")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
     }
+
+    private var playbackControls: some View {
+        HStack(spacing: 4) {
+            Button {
+                player.togglePlay(duration: score.duration)
+            } label: {
+                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+            }
+            .disabled(sourceURL == nil)
+            .help("Spela / pausa hela stycket")
+
+            Button {
+                if let obj = score.objects.first(where: { $0.id == selectedObjectID }) {
+                    player.play(from: obj.start, to: obj.end)
+                }
+            } label: {
+                Image(systemName: "play.circle")
+            }
+            .disabled(sourceURL == nil || selectedObjectID == nil)
+            .help("Spela markerat objekt")
+
+            Button { player.stop() } label: {
+                Image(systemName: "stop.fill")
+            }
+            .disabled(sourceURL == nil)
+
+            if player.currentTime > 0 || player.isPlaying {
+                Text(String(format: "%.1fs", player.currentTime))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @MainActor
+    private func exportScorePNG() {
+        let exportView = ScoreExportView(score: score, pixelsPerSecond: max(pixelsPerSecond, 24))
+            .padding(16)
+            .background(Color.white)
+
+        let renderer = ImageRenderer(content: exportView)
+        renderer.scale = 2
+
+        guard let nsImage = renderer.nsImage,
+              let tiff = nsImage.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiff),
+              let png = bitmap.representation(using: .png, properties: [:]) else {
+            onStatus?("Kunde inte skapa PNG.")
+            return
+        }
+
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.png]
+        panel.nameFieldStringValue = score.sourceName + "_Score.png"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try png.write(to: url)
+            onStatus?("Score-PNG sparad: \(url.lastPathComponent)")
+        } catch {
+            onStatus?("PNG-export misslyckades.")
+        }
+    }
 }
+
+// MARK: - Export (always Viewer chrome)
+
+struct ScoreExportView: View {
+    let score: ScoreDocument
+    var pixelsPerSecond: CGFloat = 28
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("WOS Viewer — \(score.sourceName)")
+                .font(.headline)
+            ScoreCanvasView(
+                score: score,
+                selectedSymbol: .pitchedSustained,
+                selectedObjectID: .constant(nil),
+                pixelsPerSecond: pixelsPerSecond,
+                placementArmed: .constant(false),
+                isInteracting: .constant(false),
+                presentation: .view,
+                playheadTime: nil,
+                onChangeObject: { _ in },
+                onPlace: { _ in },
+                onInteractionEnded: {}
+            )
+        }
+    }
+}
+
+// MARK: - Palette / Inspector
 
 struct SymbolPaletteView: View {
     @Binding var selected: ScoreSymbolKind
@@ -146,12 +280,8 @@ struct SymbolPaletteView: View {
                     HStack(spacing: 8) {
                         ScoreSymbolGlyph(kind: kind, filled: true, size: 18)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(kind.labelSV)
-                                .font(.caption)
-                                .foregroundStyle(.primary)
-                            Text(kind.mass.labelSV)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
+                            Text(kind.labelSV).font(.caption)
+                            Text(kind.mass.labelSV).font(.caption2).foregroundStyle(.secondary)
                         }
                         Spacer(minLength: 0)
                     }
@@ -165,8 +295,7 @@ struct SymbolPaletteView: View {
             }
 
             Spacer()
-
-            Text("Markera objekt → dra mitten för flytt. Dra vänster/höger kant för längd.\n⌫ raderar — övriga behåller sin tid (hål kvar).")
+            Text("Edit = rutor/handtag. Viewer = rent partitur. PNG exporteras alltid som Viewer.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -180,82 +309,55 @@ struct ScoreInspectorView: View {
     @Binding var object: ScoreObject?
     var duration: Double
     var onDelete: () -> Void
+    var onPlaySegment: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Inspector")
-                .font(.headline)
+            Text("Inspector").font(.headline)
 
             if let obj = Binding($object) {
-                Group {
-                    labeled("Etikett") {
-                        TextField("A", text: obj.label)
-                    }
-
-                    labeled("Symbol") {
-                        Picker("Symbol", selection: obj.symbol) {
-                            ForEach(ScoreSymbolKind.allCases) { kind in
-                                Text(kind.labelSV).tag(kind)
-                            }
-                        }
-                        .labelsHidden()
-                    }
-
-                    Toggle("Fylld (annars öppen)", isOn: obj.filled)
-
-                    labeled("Lane (0=hög)") {
-                        Stepper(value: obj.lane, in: 0...2) {
-                            Text("\(obj.wrappedValue.lane)")
+                labeled("Etikett") { TextField("A", text: obj.label) }
+                labeled("Symbol") {
+                    Picker("Symbol", selection: obj.symbol) {
+                        ForEach(ScoreSymbolKind.allCases) { kind in
+                            Text(kind.labelSV).tag(kind)
                         }
                     }
-
-                    labeled("Start (s)") {
-                        TextField(
-                            "start",
-                            value: obj.start,
-                            format: .number.precision(.fractionLength(2))
-                        )
-                    }
-
-                    labeled("Slut (s)") {
-                        TextField(
-                            "end",
-                            value: obj.end,
-                            format: .number.precision(.fractionLength(2))
-                        )
-                    }
-
-                    labeled("Notering") {
-                        TextEditor(text: obj.note)
-                            .font(.caption)
-                            .frame(minHeight: 70)
-                            .border(Color.secondary.opacity(0.3))
-                    }
-
-                    if obj.wrappedValue.autoGenerated {
-                        Text("Auto-genererad — redigera fritt")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Button("Radera objekt (⌫)", role: .destructive, action: onDelete)
-
-                    Text("Radering lämnar tidshål. Andra objekt flyttas inte ihop och byter inte etikett.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    .labelsHidden()
                 }
-                .onChange(of: object?.start) { _, _ in clampSelection() }
-                .onChange(of: object?.end) { _, _ in clampSelection() }
+                Toggle("Fylld (annars öppen)", isOn: obj.filled)
+                labeled("Lane (0=hög)") {
+                    Stepper(value: obj.lane, in: 0...2) { Text("\(obj.wrappedValue.lane)") }
+                }
+                labeled("Start (s)") {
+                    TextField("start", value: obj.start, format: .number.precision(.fractionLength(2)))
+                }
+                labeled("Slut (s)") {
+                    TextField("end", value: obj.end, format: .number.precision(.fractionLength(2)))
+                }
+                labeled("Notering") {
+                    TextEditor(text: obj.note)
+                        .font(.caption)
+                        .frame(minHeight: 70)
+                        .border(Color.secondary.opacity(0.3))
+                }
+
+                if let onPlaySegment {
+                    Button("Spela segment", action: onPlaySegment)
+                }
+
+                Button("Radera objekt (⌫)", role: .destructive, action: onDelete)
+                Text("Radering lämnar tidshål. Andra objekt flyttas inte.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
                 Text("Inget objekt valt.")
                     .foregroundStyle(.secondary)
-                    .font(.callout)
-                Text("Klicka ett objekt. Dra mitten = flytta. Dra kanterna = ändra start/slut. ⌫ = radera.")
+                Text("Växla till Edit för att markera och redigera.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
-
             Spacer()
         }
         .padding(12)
@@ -264,28 +366,25 @@ struct ScoreInspectorView: View {
 
     private func labeled<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            Text(title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             content()
         }
     }
-
-    private func clampSelection() {
-        guard var obj = object else { return }
-        obj.start = min(max(0, obj.start), max(0, duration - 0.05))
-        obj.end = min(max(obj.start + 0.05, obj.end), duration)
-        object = obj
-    }
 }
 
+// MARK: - Canvas
+
 struct ScoreCanvasView: View {
-    @Binding var score: ScoreDocument
+    let score: ScoreDocument
     var selectedSymbol: ScoreSymbolKind
     @Binding var selectedObjectID: ScoreObject.ID?
     var pixelsPerSecond: CGFloat
     @Binding var placementArmed: Bool
     @Binding var isInteracting: Bool
+    var presentation: ScorePresentationMode
+    var playheadTime: Double?
+    var onChangeObject: (ScoreObject) -> Void
+    var onPlace: (ScoreObject) -> Void
     var onInteractionEnded: () -> Void
 
     private let laneHeight: CGFloat = 56
@@ -293,6 +392,8 @@ struct ScoreCanvasView: View {
     private let envelopeHeight: CGFloat = 70
     private let rulerHeight: CGFloat = 24
     private let bracketHeight: CGFloat = 28
+
+    private var isEditing: Bool { presentation == .edit }
 
     private var canvasWidth: CGFloat {
         max(CGFloat(score.duration) * pixelsPerSecond + 80, 600)
@@ -307,22 +408,18 @@ struct ScoreCanvasView: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 6)
-                .fill(Color(white: 0.97))
+                .fill(Color.white)
                 .frame(width: canvasWidth, height: totalHeight)
 
             ForEach(score.timeFields) { field in
                 Rectangle()
-                    .fill(field.color.opacity(0.45))
-                    .frame(
-                        width: max(2, x(field.end) - x(field.start)),
-                        height: objectAreaHeight
-                    )
+                    .fill(field.color.opacity(presentation == .view ? 0.35 : 0.45))
+                    .frame(width: max(2, x(field.end) - x(field.start)), height: objectAreaHeight)
                     .offset(x: x(field.start), y: rulerHeight)
                     .allowsHitTesting(false)
             }
 
-            ruler
-                .allowsHitTesting(false)
+            ruler.allowsHitTesting(false)
 
             ForEach(0..<laneCount, id: \.self) { lane in
                 Path { path in
@@ -330,24 +427,28 @@ struct ScoreCanvasView: View {
                     path.move(to: CGPoint(x: 0, y: y))
                     path.addLine(to: CGPoint(x: canvasWidth, y: y))
                 }
-                .stroke(Color.gray.opacity(0.25), lineWidth: 0.5)
+                .stroke(Color.gray.opacity(presentation == .view ? 0.12 : 0.25), lineWidth: 0.5)
                 .allowsHitTesting(false)
             }
 
             ForEach(score.objects) { obj in
-                DraggableScoreObjectView(
-                    object: binding(for: obj.id),
-                    selected: selectedObjectID == obj.id,
+                ScoreObjectCanvasItem(
+                    object: obj,
+                    selected: isEditing && selectedObjectID == obj.id,
                     pixelsPerSecond: pixelsPerSecond,
                     laneHeight: laneHeight,
                     rulerHeight: rulerHeight,
                     laneCount: laneCount,
                     scoreDuration: score.duration,
+                    presentation: presentation,
                     onSelect: {
+                        guard isEditing else { return }
                         selectedObjectID = obj.id
                         placementArmed = false
                     },
+                    onChange: onChangeObject,
                     onInteractingChanged: { active in
+                        guard isEditing else { return }
                         isInteracting = active
                         if !active { onInteractionEnded() }
                     }
@@ -365,10 +466,19 @@ struct ScoreCanvasView: View {
                     .offset(y: rulerHeight + objectAreaHeight + envelopeHeight)
                     .allowsHitTesting(false)
             }
+
+            if let t = playheadTime {
+                Rectangle()
+                    .fill(Color.orange)
+                    .frame(width: 2, height: objectAreaHeight + envelopeHeight)
+                    .offset(x: x(t), y: rulerHeight)
+                    .allowsHitTesting(false)
+            }
         }
         .frame(width: canvasWidth, height: totalHeight, alignment: .topLeading)
         .contentShape(Rectangle())
         .onTapGesture { location in
+            guard isEditing else { return }
             guard placementArmed else {
                 selectedObjectID = nil
                 return
@@ -378,25 +488,11 @@ struct ScoreCanvasView: View {
         }
     }
 
-    private func binding(for id: ScoreObject.ID) -> Binding<ScoreObject> {
-        Binding(
-            get: {
-                score.objects.first { $0.id == id }
-                    ?? ScoreObject(label: "?", start: 0, end: 0.1, symbol: .pitchedImpulse)
-            },
-            set: { updated in
-                guard let idx = score.objects.firstIndex(where: { $0.id == id }) else { return }
-                score.objects[idx] = updated
-            }
-        )
-    }
-
     private var ruler: some View {
         ZStack(alignment: .topLeading) {
             Rectangle()
-                .fill(Color(white: 0.92))
+                .fill(Color(white: 0.94))
                 .frame(width: canvasWidth, height: rulerHeight)
-
             ForEach(Array(stride(from: 0.0, through: score.duration, by: 5.0)), id: \.self) { t in
                 let px = x(t)
                 Path { p in
@@ -404,7 +500,6 @@ struct ScoreCanvasView: View {
                     p.addLine(to: CGPoint(x: px, y: rulerHeight))
                 }
                 .stroke(Color.secondary, lineWidth: 1)
-
                 Text("\(Int(t))")
                     .font(.system(size: 9, design: .monospaced))
                     .foregroundStyle(.secondary)
@@ -453,11 +548,8 @@ struct ScoreCanvasView: View {
             }
             .stroke(Color.primary, lineWidth: 1.2)
             .frame(width: w, height: 12)
-
             if !bracket.label.isEmpty {
-                Text(bracket.label)
-                    .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
+                Text(bracket.label).font(.system(size: 9)).foregroundStyle(.secondary)
             }
         }
         .offset(x: x(bracket.start), y: 4)
@@ -482,9 +574,7 @@ struct ScoreCanvasView: View {
             note: "manuell",
             autoGenerated: false
         )
-        score.objects.append(obj)
-        score.objects.sort { $0.start < $1.start }
-        selectedObjectID = obj.id
+        onPlace(obj)
     }
 
     private func nextLabel() -> String {
@@ -497,51 +587,78 @@ struct ScoreCanvasView: View {
     }
 }
 
-// MARK: - Draggable object
+// MARK: - Object item (Edit chrome vs Viewer clean)
 
-private struct DraggableScoreObjectView: View {
-    @Binding var object: ScoreObject
+private struct ScoreObjectCanvasItem: View {
+    let object: ScoreObject
     var selected: Bool
     var pixelsPerSecond: CGFloat
     var laneHeight: CGFloat
     var rulerHeight: CGFloat
     var laneCount: Int
     var scoreDuration: Double
+    var presentation: ScorePresentationMode
     var onSelect: () -> Void
+    var onChange: (ScoreObject) -> Void
     var onInteractingChanged: (Bool) -> Void
 
+    @State private var draft: ScoreObject?
     @State private var dragOrigin: ScoreObject?
     @State private var mode: DragMode = .move
 
-    private enum DragMode {
-        case move, resizeStart, resizeEnd
-    }
+    private enum DragMode { case move, resizeStart, resizeEnd }
+
+    private var live: ScoreObject { draft ?? object }
 
     private var width: CGFloat {
-        max(36, CGFloat(object.end - object.start) * pixelsPerSecond)
+        max(presentation == .view ? 24 : 36, CGFloat(live.end - live.start) * pixelsPerSecond)
     }
 
-    private var xPos: CGFloat {
-        CGFloat(object.start) * pixelsPerSecond + 8
-    }
-
-    private var yPos: CGFloat {
-        rulerHeight + CGFloat(object.lane) * laneHeight + 8
-    }
-
-    /// Bred kantzon så längd går att ta utan mikroskopiska handtag.
+    private var xPos: CGFloat { CGFloat(live.start) * pixelsPerSecond + 8 }
+    private var yPos: CGFloat { rulerHeight + CGFloat(live.lane) * laneHeight + 8 }
     private var edgeWidth: CGFloat { min(14, max(10, width * 0.2)) }
 
     var body: some View {
+        Group {
+            if presentation == .view {
+                viewerBody
+            } else {
+                editorBody
+            }
+        }
+        .offset(x: xPos, y: yPos)
+    }
+
+    private var viewerBody: some View {
+        HStack(spacing: 4) {
+            Text(live.label)
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+            ScoreSymbolGlyph(kind: live.symbol, filled: live.filled, size: 16)
+            if width > 40 {
+                Rectangle()
+                    .fill(live.filled ? Color.primary : Color.clear)
+                    .frame(height: live.filled ? 1.5 : 1)
+                    .overlay(
+                        Rectangle()
+                            .stroke(style: StrokeStyle(lineWidth: 1, dash: live.filled ? [] : [3, 2]))
+                            .foregroundStyle(Color.primary)
+                    )
+            }
+        }
+        .frame(width: width, height: 28, alignment: .leading)
+        // Ingen bakgrund, ingen ram — rent partitur.
+    }
+
+    private var editorBody: some View {
         HStack(spacing: 0) {
             edgeBar(label: "⟨")
                 .frame(width: edgeWidth, height: 38)
                 .highPriorityGesture(dragGesture(mode: .resizeStart))
 
             HStack(spacing: 4) {
-                Text(object.label)
+                Text(live.label)
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
-                ScoreSymbolGlyph(kind: object.symbol, filled: object.filled, size: 16)
+                ScoreSymbolGlyph(kind: live.symbol, filled: live.filled, size: 16)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 4)
@@ -555,18 +672,12 @@ private struct DraggableScoreObjectView: View {
                 .highPriorityGesture(dragGesture(mode: .resizeEnd))
         }
         .frame(width: width, height: 38)
-        .background(
-            RoundedRectangle(cornerRadius: 5)
-                .fill(Color.white.opacity(0.92))
-        )
+        .background(RoundedRectangle(cornerRadius: 5).fill(Color.white.opacity(0.92)))
         .overlay(
             RoundedRectangle(cornerRadius: 5)
                 .stroke(selected ? Color.accentColor : Color.primary.opacity(0.35), lineWidth: selected ? 2 : 1)
         )
-        .offset(x: xPos, y: yPos)
-        .help(selected
-              ? "Mitten = flytta. Vänster ⟨ = start. Höger ⟩ = slut. ⌫ = radera."
-              : "Klicka för att markera")
+        .help("Mitten = flytta. ⟨⟩ = längd. ⌫ = radera.")
     }
 
     private func edgeBar(label: String) -> some View {
@@ -586,29 +697,33 @@ private struct DraggableScoreObjectView: View {
                 onSelect()
                 if dragOrigin == nil {
                     dragOrigin = object
+                    draft = object
                     mode = requested
                     onInteractingChanged(true)
                 }
-                guard let origin = dragOrigin else { return }
+                guard var working = draft, let origin = dragOrigin else { return }
                 let dt = Double(value.translation.width / pixelsPerSecond)
-
                 switch mode {
                 case .move:
                     let dLane = Int(round(Double(value.translation.height / laneHeight)))
                     let dur = origin.end - origin.start
                     var start = origin.start + dt
                     start = min(max(0, start), max(0, scoreDuration - dur))
-                    object.start = start
-                    object.end = start + dur
-                    object.lane = min(laneCount - 1, max(0, origin.lane + dLane))
+                    working.start = start
+                    working.end = start + dur
+                    working.lane = min(laneCount - 1, max(0, origin.lane + dLane))
                 case .resizeStart:
-                    object.start = min(origin.end - 0.08, max(0, origin.start + dt))
+                    working.start = min(origin.end - 0.08, max(0, origin.start + dt))
                 case .resizeEnd:
-                    object.end = max(origin.start + 0.08, min(scoreDuration, origin.end + dt))
+                    working.end = max(origin.start + 0.08, min(scoreDuration, origin.end + dt))
                 }
-                object.autoGenerated = false
+                working.autoGenerated = false
+                draft = working
+                onChange(working)
             }
             .onEnded { _ in
+                if let draft { onChange(draft) }
+                self.draft = nil
                 dragOrigin = nil
                 onInteractingChanged(false)
             }
@@ -650,19 +765,10 @@ struct ScoreSymbolGlyph: View {
                 var line = Path()
                 line.move(to: CGPoint(x: head.maxX, y: rect.midY))
                 line.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
-                context.stroke(
-                    line,
-                    with: .color(color),
-                    style: StrokeStyle(lineWidth: 1.5, dash: [3, 2])
-                )
+                context.stroke(line, with: .color(color), style: StrokeStyle(lineWidth: 1.5, dash: [3, 2]))
             case .iterated:
                 for i in 0..<3 {
-                    let r = CGRect(
-                        x: rect.minX + CGFloat(i) * 6,
-                        y: rect.midY - 3,
-                        width: 6,
-                        height: 6
-                    )
+                    let r = CGRect(x: rect.minX + CGFloat(i) * 6, y: rect.midY - 3, width: 6, height: 6)
                     var d = Path()
                     d.move(to: CGPoint(x: r.midX, y: r.minY))
                     d.addLine(to: CGPoint(x: r.maxX, y: r.midY))
@@ -675,8 +781,7 @@ struct ScoreSymbolGlyph: View {
                 for i in 0..<5 {
                     let cx = rect.minX + 3 + CGFloat(i % 3) * 5
                     let cy = rect.minY + 4 + CGFloat(i / 3) * 6
-                    let p = Path(ellipseIn: CGRect(x: cx, y: cy, width: 3, height: 3))
-                    context.fill(p, with: .color(color))
+                    context.fill(Path(ellipseIn: CGRect(x: cx, y: cy, width: 3, height: 3)), with: .color(color))
                 }
             case .variable:
                 var d = Path()

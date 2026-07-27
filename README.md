@@ -7,7 +7,9 @@
 - Öppna **wav / mp3 / m4a** (eller AIFF / CSV)
 - **Features:** RMS, Novelty, Spectral Centroid, ZCR, MFCC₁
 - **Score:** auto-segmentering → föreslagna ljudobjekt, time-fields, dynamic forms, brackets
-- **Score-redigering (skiva 1):** dra/flytta, resize-handtag, inspector, placeringsläge
+- **Score-redigering:** Edit-läge med drag/resize/inspector; **Viewer**-läge utan rutor
+- **PNG-export** av score (alltid Viewer-stil)
+- **Uppspelning** med playhead + spela markerat segment
 - Symbolpalett (Thoresen-inspirerad, förenklad) + manuell placering
 - Sparar `*.wos.csv` och `*.wosscore.json` bredvid källfilen
 - WallofSound-ikon + logotyp

@@ -4,8 +4,9 @@
 
 | Skiva | Innehåll | Status |
 |-------|----------|--------|
-| **1** | Drag/flytta, resize, inspector, spara | Pågår |
-| **2** | Playhead + uppspelning av segment | Senare |
+| **1** | Drag/flytta, resize, inspector, spara | Klar |
+| **1b** | Edit / Viewer + PNG utan rutor | Klar |
+| **2** | Playhead + uppspelning av segment | Klar |
 | **3** | Manuella time-fields & dynamic forms | Senare |
 | **4** | Bättre auto-förslag + SVG/PDF-export | Senare |
 
