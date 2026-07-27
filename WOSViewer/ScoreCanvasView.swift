@@ -9,6 +9,8 @@ struct ScoreEditorView: View {
     @State private var selectedObjectID: ScoreObject.ID?
     @State private var pixelsPerSecond: CGFloat = 28
     @State private var placementArmed = false
+    @State private var isInteracting = false
+    @FocusState private var canvasFocused: Bool
 
     private var selectedBinding: Binding<ScoreObject?> {
         Binding(
@@ -20,7 +22,10 @@ struct ScoreEditorView: View {
                 guard let updated,
                       let idx = score.objects.firstIndex(where: { $0.id == updated.id }) else { return }
                 score.objects[idx] = updated
-                score.objects.sort { $0.start < $1.start }
+                // Aldrig packa ihop tider. Sortera bara visningsordning när vi inte drar.
+                if !isInteracting {
+                    score.objects.sort { $0.start < $1.start }
+                }
             }
         )
     }
@@ -41,11 +46,21 @@ struct ScoreEditorView: View {
                         selectedSymbol: selectedSymbol,
                         selectedObjectID: $selectedObjectID,
                         pixelsPerSecond: pixelsPerSecond,
-                        placementArmed: $placementArmed
+                        placementArmed: $placementArmed,
+                        isInteracting: $isInteracting,
+                        onInteractionEnded: {
+                            score.objects.sort { $0.start < $1.start }
+                        }
                     )
                     .padding(12)
                 }
+                .scrollDisabled(isInteracting)
                 .background(Color(nsColor: .windowBackgroundColor))
+                .focusable()
+                .focused($canvasFocused)
+                .onDeleteCommand(perform: deleteSelected)
+                .onAppear { canvasFocused = true }
+                .onChange(of: selectedObjectID) { _, _ in canvasFocused = true }
             }
 
             Divider()
@@ -53,14 +68,19 @@ struct ScoreEditorView: View {
             ScoreInspectorView(
                 object: selectedBinding,
                 duration: score.duration,
-                onDelete: {
-                    guard let id = selectedObjectID else { return }
-                    score.objects.removeAll { $0.id == id }
-                    selectedObjectID = nil
-                }
+                onDelete: deleteSelected
             )
-            .frame(width: 220)
+            .frame(width: 230)
         }
+        .onAppear { canvasFocused = true }
+    }
+
+    /// Tar bort markerat objekt. Lämnar tidshål — övriga objekt behåller start/slut/etikett.
+    private func deleteSelected() {
+        guard let id = selectedObjectID else { return }
+        score.objects.removeAll { $0.id == id }
+        selectedObjectID = nil
+        // Ingen omsortering av tider, ingen omindexering av etiketter.
     }
 
     private var scoreToolbar: some View {
@@ -84,12 +104,11 @@ struct ScoreEditorView: View {
             }
             .frame(width: 140)
 
-            Button("Radera valt") {
-                guard let id = selectedObjectID else { return }
-                score.objects.removeAll { $0.id == id }
-                selectedObjectID = nil
+            Button("Radera (⌫)") {
+                deleteSelected()
             }
             .disabled(selectedObjectID == nil)
+            .help("Tar bort markerat objekt. Övriga behåller sin plats i tiden (hål kvar).")
             .keyboardShortcut(.delete, modifiers: [])
 
             Button("Spara score") {
@@ -147,7 +166,7 @@ struct SymbolPaletteView: View {
 
             Spacer()
 
-            Text("Dra objekt för att flytta. Handtag för längd. Inspector till höger.")
+            Text("Markera objekt → dra mitten för flytt. Dra vänster/höger kant för längd.\n⌫ raderar — övriga behåller sin tid (hål kvar).")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -219,7 +238,12 @@ struct ScoreInspectorView: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    Button("Radera objekt", role: .destructive, action: onDelete)
+                    Button("Radera objekt (⌫)", role: .destructive, action: onDelete)
+
+                    Text("Radering lämnar tidshål. Andra objekt flyttas inte ihop och byter inte etikett.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .onChange(of: object?.start) { _, _ in clampSelection() }
                 .onChange(of: object?.end) { _, _ in clampSelection() }
@@ -227,7 +251,7 @@ struct ScoreInspectorView: View {
                 Text("Inget objekt valt.")
                     .foregroundStyle(.secondary)
                     .font(.callout)
-                Text("Klicka ett objekt i scoret, eller aktivera placering och klicka i canvas.")
+                Text("Klicka ett objekt. Dra mitten = flytta. Dra kanterna = ändra start/slut. ⌫ = radera.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -261,6 +285,8 @@ struct ScoreCanvasView: View {
     @Binding var selectedObjectID: ScoreObject.ID?
     var pixelsPerSecond: CGFloat
     @Binding var placementArmed: Bool
+    @Binding var isInteracting: Bool
+    var onInteractionEnded: () -> Void
 
     private let laneHeight: CGFloat = 56
     private let laneCount = 3
@@ -320,6 +346,10 @@ struct ScoreCanvasView: View {
                     onSelect: {
                         selectedObjectID = obj.id
                         placementArmed = false
+                    },
+                    onInteractingChanged: { active in
+                        isInteracting = active
+                        if !active { onInteractionEnded() }
                     }
                 )
             }
@@ -357,7 +387,6 @@ struct ScoreCanvasView: View {
             set: { updated in
                 guard let idx = score.objects.firstIndex(where: { $0.id == id }) else { return }
                 score.objects[idx] = updated
-                score.objects.sort { $0.start < $1.start }
             }
         )
     }
@@ -479,77 +508,92 @@ private struct DraggableScoreObjectView: View {
     var laneCount: Int
     var scoreDuration: Double
     var onSelect: () -> Void
+    var onInteractingChanged: (Bool) -> Void
 
-    @State private var dragStart: ScoreObject?
-    @State private var resizeEdge: ResizeEdge?
+    @State private var dragOrigin: ScoreObject?
+    @State private var mode: DragMode = .move
 
-    private enum ResizeEdge {
-        case start, end
+    private enum DragMode {
+        case move, resizeStart, resizeEnd
     }
 
     private var width: CGFloat {
-        max(28, CGFloat(object.end - object.start) * pixelsPerSecond)
+        max(36, CGFloat(object.end - object.start) * pixelsPerSecond)
     }
 
-    private var x: CGFloat {
+    private var xPos: CGFloat {
         CGFloat(object.start) * pixelsPerSecond + 8
     }
 
-    private var y: CGFloat {
-        rulerHeight + CGFloat(object.lane) * laneHeight + 10
+    private var yPos: CGFloat {
+        rulerHeight + CGFloat(object.lane) * laneHeight + 8
     }
 
+    /// Bred kantzon så längd går att ta utan mikroskopiska handtag.
+    private var edgeWidth: CGFloat { min(14, max(10, width * 0.2)) }
+
     var body: some View {
-        ZStack(alignment: .leading) {
+        HStack(spacing: 0) {
+            edgeBar(label: "⟨")
+                .frame(width: edgeWidth, height: 38)
+                .highPriorityGesture(dragGesture(mode: .resizeStart))
+
             HStack(spacing: 4) {
                 Text(object.label)
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
                 ScoreSymbolGlyph(kind: object.symbol, filled: object.filled, size: 16)
-                if width > 54 {
-                    Rectangle()
-                        .fill(object.filled ? Color.primary : Color.clear)
-                        .frame(height: object.filled ? 2 : 1)
-                        .overlay(
-                            Rectangle()
-                                .stroke(
-                                    style: StrokeStyle(lineWidth: 1, dash: object.filled ? [] : [4, 3])
-                                )
-                                .foregroundStyle(Color.primary)
-                        )
-                }
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 6)
-            .frame(width: width, height: 34, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.white.opacity(0.85))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(selected ? Color.orange : Color.primary.opacity(0.35), lineWidth: selected ? 2 : 1)
-            )
+            .padding(.horizontal, 4)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .gesture(dragGesture(mode: .move))
+            .onTapGesture { onSelect() }
 
-            if selected {
-                resizeHandle
-                    .offset(x: -4)
-                    .gesture(resizeGesture(edge: .start))
-                resizeHandle
-                    .offset(x: width - 4)
-                    .gesture(resizeGesture(edge: .end))
-            }
+            edgeBar(label: "⟩")
+                .frame(width: edgeWidth, height: 38)
+                .highPriorityGesture(dragGesture(mode: .resizeEnd))
         }
-        .frame(width: width, height: 34, alignment: .leading)
-        .offset(x: x, y: y)
-        .highPriorityGesture(
-            DragGesture(minimumDistance: 3)
-                .onChanged { value in
-                    onSelect()
-                    if dragStart == nil {
-                        dragStart = object
-                        resizeEdge = nil
-                    }
-                    guard let origin = dragStart else { return }
-                    let dt = Double(value.translation.width / pixelsPerSecond)
+        .frame(width: width, height: 38)
+        .background(
+            RoundedRectangle(cornerRadius: 5)
+                .fill(Color.white.opacity(0.92))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 5)
+                .stroke(selected ? Color.accentColor : Color.primary.opacity(0.35), lineWidth: selected ? 2 : 1)
+        )
+        .offset(x: xPos, y: yPos)
+        .help(selected
+              ? "Mitten = flytta. Vänster ⟨ = start. Höger ⟩ = slut. ⌫ = radera."
+              : "Klicka för att markera")
+    }
+
+    private func edgeBar(label: String) -> some View {
+        ZStack {
+            Rectangle()
+                .fill(selected ? Color.accentColor.opacity(0.35) : Color.gray.opacity(0.2))
+            Text(label)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+        }
+        .contentShape(Rectangle())
+    }
+
+    private func dragGesture(mode requested: DragMode) -> some Gesture {
+        DragGesture(minimumDistance: 2)
+            .onChanged { value in
+                onSelect()
+                if dragOrigin == nil {
+                    dragOrigin = object
+                    mode = requested
+                    onInteractingChanged(true)
+                }
+                guard let origin = dragOrigin else { return }
+                let dt = Double(value.translation.width / pixelsPerSecond)
+
+                switch mode {
+                case .move:
                     let dLane = Int(round(Double(value.translation.height / laneHeight)))
                     let dur = origin.end - origin.start
                     var start = origin.start + dt
@@ -557,47 +601,16 @@ private struct DraggableScoreObjectView: View {
                     object.start = start
                     object.end = start + dur
                     object.lane = min(laneCount - 1, max(0, origin.lane + dLane))
-                    object.autoGenerated = false
-                }
-                .onEnded { _ in
-                    dragStart = nil
-                }
-        )
-        .onTapGesture {
-            onSelect()
-        }
-    }
-
-    private var resizeHandle: some View {
-        RoundedRectangle(cornerRadius: 2)
-            .fill(Color.orange)
-            .frame(width: 8, height: 22)
-            .contentShape(Rectangle())
-    }
-
-    private func resizeGesture(edge: ResizeEdge) -> some Gesture {
-        DragGesture(minimumDistance: 1)
-            .onChanged { value in
-                onSelect()
-                if dragStart == nil {
-                    dragStart = object
-                    resizeEdge = edge
-                }
-                guard let origin = dragStart, resizeEdge == edge else { return }
-                let dt = Double(value.translation.width / pixelsPerSecond)
-                switch edge {
-                case .start:
-                    let newStart = min(origin.end - 0.08, max(0, origin.start + dt))
-                    object.start = newStart
-                case .end:
-                    let newEnd = max(origin.start + 0.08, min(scoreDuration, origin.end + dt))
-                    object.end = newEnd
+                case .resizeStart:
+                    object.start = min(origin.end - 0.08, max(0, origin.start + dt))
+                case .resizeEnd:
+                    object.end = max(origin.start + 0.08, min(scoreDuration, origin.end + dt))
                 }
                 object.autoGenerated = false
             }
             .onEnded { _ in
-                dragStart = nil
-                resizeEdge = nil
+                dragOrigin = nil
+                onInteractingChanged(false)
             }
     }
 }
