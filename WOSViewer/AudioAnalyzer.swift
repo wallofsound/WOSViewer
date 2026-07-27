@@ -86,7 +86,8 @@ struct AudioAnalyzer {
                 rms: rms,
                 centroid: centroid,
                 zcr: zcr,
-                novelty: novelty
+                novelty: novelty,
+                mfcc1: mfcc1
             )
             score = built
             scoreURL = try? ScoreStore.save(built, beside: url)
@@ -165,7 +166,8 @@ struct AudioAnalyzer {
                 rms: rms,
                 centroid: centroid,
                 zcr: zcr,
-                novelty: novelty
+                novelty: novelty,
+                mfcc1: mfcc1
             )
             score = built
             scoreURL = try? ScoreStore.save(built, beside: url)

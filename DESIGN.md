@@ -7,8 +7,18 @@
 | **1** | Drag/flytta, resize, inspector, spara | Klar |
 | **1b** | Edit / Viewer + PNG utan rutor | Klar |
 | **2** | Playhead + uppspelning av segment | Klar |
+| **2b** | Förfinad auto-analys (onset/offset, adaptiv klassning, MFCC-familjer) | Klar |
 | **3** | Manuella time-fields & dynamic forms | Senare |
-| **4** | Bättre auto-förslag + SVG/PDF-export | Senare |
+| **4** | SVG/PDF-export (+ ev. ännu bättre clustering) | Senare |
+
+## Auto-analys (2b)
+
+- Adaptiv novelty-tröskel (median + MAD)
+- Objekt = onset → RMS-offset (inte bara “mellan toppar”)
+- Klassning relativt styckets statistik (ZCR/centroid/novelty)
+- Familjeetiketter via MFCC₁ + symboltyp (A, A′, B…)
+- **Omanalysera** ersätter auto-objekt, behåller manuella
+
 
 Princip: en **testbar redigeringsloop** per skiva. Inte allt på en gång.
 
