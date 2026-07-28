@@ -163,6 +163,7 @@ struct ContentView: View {
                             ),
                             sourceURL: result.sourceURL?.pathExtension.lowercased() == "csv" ? nil : result.sourceURL,
                             featureSeries: result.series,
+                            spectrogram: result.spectrogram,
                             onSave: { _ in model.saveScore() },
                             onStatus: { model.statusMessage = $0 }
                         )

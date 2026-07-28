@@ -93,6 +93,15 @@ struct AudioAnalyzer {
             scoreURL = try? ScoreStore.save(built, beside: url)
         }
 
+        let spectrogram = Self.makeMelSpectrogram(
+            spectra: spectra,
+            sampleRate: mono.sampleRate,
+            fftSize: frameLength,
+            duration: duration,
+            targetColumns: min(1_200, max(120, frames.count)),
+            bandCount: 64
+        )
+
         return AnalysisResult(
             sourceName: url.lastPathComponent,
             sourceURL: url,
@@ -101,6 +110,7 @@ struct AudioAnalyzer {
             hopLength: hopLength,
             frameLength: frameLength,
             series: series,
+            spectrogram: spectrogram,
             csvURL: csvURL,
             score: score,
             scoreURL: scoreURL
@@ -181,6 +191,7 @@ struct AudioAnalyzer {
             hopLength: hopLength,
             frameLength: frameLength,
             series: series,
+            spectrogram: nil,
             csvURL: url,
             score: score,
             scoreURL: scoreURL
@@ -405,6 +416,113 @@ struct AudioAnalyzer {
 
     private static func melToHz(_ mel: Double) -> Double {
         700 * (pow(10, mel / 2595) - 1)
+    }
+
+    /// Log-mel spectrogram downsampled in time for score underlay.
+    private static func makeMelSpectrogram(
+        spectra: [[Float]],
+        sampleRate: Double,
+        fftSize: Int,
+        duration: Double,
+        targetColumns: Int,
+        bandCount: Int
+    ) -> SpectrogramData? {
+        guard !spectra.isEmpty, let bins = spectra.first?.count, bins > 4 else { return nil }
+        let minHz = 40.0
+        let maxHz = sampleRate / 2
+        let filterbank = melFilterbank(
+            bandCount: bandCount,
+            fftBins: bins,
+            sampleRate: sampleRate,
+            fftSize: fftSize,
+            minHz: minHz,
+            maxHz: maxHz
+        )
+
+        let columns = min(targetColumns, spectra.count)
+        var mel = [Float](repeating: 0, count: columns * bandCount)
+        let step = Double(spectra.count) / Double(columns)
+
+        for c in 0..<columns {
+            let start = Int(Double(c) * step)
+            let end = min(spectra.count, max(start + 1, Int(Double(c + 1) * step)))
+            var bandEnergy = [Double](repeating: 0, count: bandCount)
+            let nFrames = Double(end - start)
+            for fi in start..<end {
+                let mag = spectra[fi]
+                for b in 0..<bandCount {
+                    var e: Double = 0
+                    let weights = filterbank[b]
+                    for (bin, w) in weights where bin < mag.count {
+                        e += Double(mag[bin]) * w
+                    }
+                    bandEnergy[b] += e
+                }
+            }
+            for b in 0..<bandCount {
+                let avg = bandEnergy[b] / max(nFrames, 1)
+                mel[c * bandCount + b] = Float(log(max(avg, 1e-10)))
+            }
+        }
+
+        // Normalize with soft percentile-ish: mean of top 5% as ceiling
+        var sorted = mel.sorted()
+        let hiIdx = min(sorted.count - 1, max(0, Int(Double(sorted.count) * 0.98)))
+        let loIdx = min(sorted.count - 1, max(0, Int(Double(sorted.count) * 0.15)))
+        let lo = sorted[loIdx]
+        let hi = max(sorted[hiIdx], lo + 1e-3)
+        for i in mel.indices {
+            mel[i] = max(0, min(1, (mel[i] - lo) / (hi - lo)))
+        }
+
+        return SpectrogramData(
+            columnCount: columns,
+            bandCount: bandCount,
+            magnitudes: mel,
+            duration: duration,
+            minHz: minHz,
+            maxHz: maxHz,
+            sampleRate: sampleRate
+        )
+    }
+
+    /// Sparse triangular mel weights: band → [(fftBin, weight)].
+    private static func melFilterbank(
+        bandCount: Int,
+        fftBins: Int,
+        sampleRate: Double,
+        fftSize: Int,
+        minHz: Double,
+        maxHz: Double
+    ) -> [[(Int, Double)]] {
+        let minMel = hzToMel(minHz)
+        let maxMel = hzToMel(maxHz)
+        var edges = [Double](repeating: 0, count: bandCount + 2)
+        for i in 0..<edges.count {
+            edges[i] = melToHz(minMel + (maxMel - minMel) * Double(i) / Double(bandCount + 1))
+        }
+        var bank = [[(Int, Double)]](repeating: [], count: bandCount)
+        let binHz = sampleRate / Double(fftSize)
+        for b in 0..<bandCount {
+            let f0 = edges[b]
+            let f1 = edges[b + 1]
+            let f2 = edges[b + 2]
+            let i0 = max(0, Int(f0 / binHz))
+            let i2 = min(fftBins - 1, Int(ceil(f2 / binHz)))
+            for i in i0...i2 {
+                let hz = Double(i) * binHz
+                var w: Double = 0
+                if hz >= f0 && hz <= f1 {
+                    w = (hz - f0) / max(f1 - f0, 1e-9)
+                } else if hz > f1 && hz <= f2 {
+                    w = (f2 - hz) / max(f2 - f1, 1e-9)
+                }
+                if w > 0 {
+                    bank[b].append((i, w))
+                }
+            }
+        }
+        return bank
     }
 
     private func makeSeries(_ kind: FeatureSeries.Kind, times: [Double], values: [Double]) -> FeatureSeries {

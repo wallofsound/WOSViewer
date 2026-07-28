@@ -26,6 +26,7 @@ struct ScoreEditorView: View {
     @Binding var score: ScoreDocument
     var sourceURL: URL?
     var featureSeries: [FeatureSeries]? = nil
+    var spectrogram: SpectrogramData? = nil
     var onSave: (ScoreDocument) -> Void
     var onStatus: ((String) -> Void)? = nil
 
@@ -36,6 +37,7 @@ struct ScoreEditorView: View {
     @State private var pixelsPerSecond: CGFloat = 28
     @State private var isInteracting = false
     @State private var presentation: ScorePresentationMode = .edit
+    @State private var showSpectrogram = true
     @StateObject private var player = ScoreAudioPlayer()
     @FocusState private var canvasFocused: Bool
 
@@ -123,6 +125,8 @@ struct ScoreEditorView: View {
                         pixelsPerSecond: pixelsPerSecond,
                         isInteracting: $isInteracting,
                         presentation: presentation,
+                        spectrogram: spectrogram,
+                        showSpectrogram: showSpectrogram,
                         playheadTime: (player.isPlaying || player.currentTime > 0) ? player.currentTime : nil,
                         onChangeObject: { updated in
                             guard let idx = score.objects.firstIndex(where: { $0.id == updated.id }) else { return }
@@ -276,6 +280,13 @@ struct ScoreEditorView: View {
             Slider(value: $pixelsPerSecond, in: 12...80)
                 .frame(width: 100)
 
+            Toggle("Spektrogram", isOn: $showSpectrogram)
+                .toggleStyle(.checkbox)
+                .help(spectrogram == nil
+                      ? "Spektrogram finns bara vid ljudanalys (inte CSV)."
+                      : "Mel-spektrogram under objektplanen (låg frekvens nederst).")
+                .disabled(spectrogram == nil)
+
             if isEditing {
                 Button("Omanalysera") { reanalyze() }
                     .help("Ny auto-analys från features. Manuella objekt/fält/former behålls.")
@@ -328,7 +339,11 @@ struct ScoreEditorView: View {
 
     @MainActor
     private func exportScorePNG() {
-        let exportView = ScoreExportView(score: score, pixelsPerSecond: max(pixelsPerSecond, 24))
+        let exportView = ScoreExportView(
+            score: score,
+            pixelsPerSecond: max(pixelsPerSecond, 24),
+            spectrogram: showSpectrogram ? spectrogram : nil
+        )
             .padding(16)
             .background(Color.white)
 
@@ -361,6 +376,7 @@ struct ScoreEditorView: View {
 struct ScoreExportView: View {
     let score: ScoreDocument
     var pixelsPerSecond: CGFloat = 28
+    var spectrogram: SpectrogramData? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -375,6 +391,8 @@ struct ScoreExportView: View {
                 pixelsPerSecond: pixelsPerSecond,
                 isInteracting: .constant(false),
                 presentation: .view,
+                spectrogram: spectrogram,
+                showSpectrogram: spectrogram != nil,
                 playheadTime: nil,
                 onChangeObject: { _ in },
                 onChangeField: { _ in },
@@ -639,6 +657,8 @@ struct ScoreCanvasView: View {
     var pixelsPerSecond: CGFloat
     @Binding var isInteracting: Bool
     var presentation: ScorePresentationMode
+    var spectrogram: SpectrogramData? = nil
+    var showSpectrogram: Bool = false
     var playheadTime: Double?
     var onChangeObject: (ScoreObject) -> Void
     var onChangeField: (TimeField) -> Void
@@ -669,16 +689,28 @@ struct ScoreCanvasView: View {
         rulerHeight + fieldStripHeight + objectAreaHeight + envelopeHeight + bracketHeight + 16
     }
 
+    private var spectrogramWidth: CGFloat {
+        max(1, CGFloat(score.duration) * pixelsPerSecond)
+    }
+
     var body: some View {
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 6)
                 .fill(Color.white)
                 .frame(width: canvasWidth, height: totalHeight)
 
+            // Spectrogram underlay behind time-field wash + objects
+            if showSpectrogram, let spectrogram {
+                SpectrogramUnderlayView(data: spectrogram)
+                    .frame(width: spectrogramWidth, height: objectAreaHeight)
+                    .offset(x: 8, y: objectTop)
+                    .allowsHitTesting(false)
+            }
+
             // Background wash for time fields across object lanes
             ForEach(score.timeFields) { field in
                 Rectangle()
-                    .fill(field.color.opacity(presentation == .view ? 0.32 : 0.42))
+                    .fill(field.color.opacity(presentation == .view ? 0.22 : 0.28))
                     .frame(width: max(2, x(field.end) - x(field.start)), height: objectAreaHeight)
                     .offset(x: x(field.start), y: objectTop)
                     .allowsHitTesting(false)
@@ -889,6 +921,27 @@ struct ScoreCanvasView: View {
 
     private func nextFieldName() -> String {
         "Fält \(score.timeFields.count + 1)"
+    }
+}
+
+// MARK: - Spectrogram underlay
+
+private struct SpectrogramUnderlayView: View {
+    let data: SpectrogramData
+    @State private var image: CGImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(decorative: image, scale: 1)
+                    .resizable()
+                    .interpolation(.medium)
+            } else {
+                Color.clear
+            }
+        }
+        .onAppear { image = data.makeCGImage() }
+        .onChange(of: data.columnCount) { _, _ in image = data.makeCGImage() }
     }
 }
 
