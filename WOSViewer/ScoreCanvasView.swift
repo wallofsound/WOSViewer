@@ -8,6 +8,20 @@ enum ScorePresentationMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+enum ScoreEditSelection: Hashable {
+    case none
+    case object(ScoreObject.ID)
+    case timeField(TimeField.ID)
+    case dynamicForm(DynamicForm.ID)
+}
+
+enum PlacementTool: Hashable {
+    case none
+    case symbol(ScoreSymbolKind)
+    case timeField
+    case dynamicForm(DynamicForm.Shape)
+}
+
 struct ScoreEditorView: View {
     @Binding var score: ScoreDocument
     var sourceURL: URL?
@@ -16,9 +30,10 @@ struct ScoreEditorView: View {
     var onStatus: ((String) -> Void)? = nil
 
     @State private var selectedSymbol: ScoreSymbolKind = .pitchedSustained
-    @State private var selectedObjectID: ScoreObject.ID?
+    @State private var selectedFormShape: DynamicForm.Shape = .crescendo
+    @State private var selection: ScoreEditSelection = .none
+    @State private var placementTool: PlacementTool = .none
     @State private var pixelsPerSecond: CGFloat = 28
-    @State private var placementArmed = false
     @State private var isInteracting = false
     @State private var presentation: ScorePresentationMode = .edit
     @StateObject private var player = ScoreAudioPlayer()
@@ -26,11 +41,13 @@ struct ScoreEditorView: View {
 
     private var isEditing: Bool { presentation == .edit }
 
-    private var selectedBinding: Binding<ScoreObject?> {
+    private var selectedObjectBinding: Binding<ScoreObject?> {
         Binding(
             get: {
-                guard let id = selectedObjectID else { return nil }
-                return score.objects.first { $0.id == id }
+                if case .object(let id) = selection {
+                    return score.objects.first { $0.id == id }
+                }
+                return nil
             },
             set: { updated in
                 guard let updated,
@@ -43,11 +60,53 @@ struct ScoreEditorView: View {
         )
     }
 
+    private var selectedFieldBinding: Binding<TimeField?> {
+        Binding(
+            get: {
+                if case .timeField(let id) = selection {
+                    return score.timeFields.first { $0.id == id }
+                }
+                return nil
+            },
+            set: { updated in
+                guard let updated,
+                      let idx = score.timeFields.firstIndex(where: { $0.id == updated.id }) else { return }
+                score.timeFields[idx] = updated
+                if !isInteracting {
+                    score.timeFields.sort { $0.start < $1.start }
+                }
+            }
+        )
+    }
+
+    private var selectedFormBinding: Binding<DynamicForm?> {
+        Binding(
+            get: {
+                if case .dynamicForm(let id) = selection {
+                    return score.dynamicForms.first { $0.id == id }
+                }
+                return nil
+            },
+            set: { updated in
+                guard let updated,
+                      let idx = score.dynamicForms.firstIndex(where: { $0.id == updated.id }) else { return }
+                score.dynamicForms[idx] = updated
+                if !isInteracting {
+                    score.dynamicForms.sort { $0.start < $1.start }
+                }
+            }
+        )
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             if isEditing {
-                SymbolPaletteView(selected: $selectedSymbol, placementArmed: $placementArmed)
-                    .frame(width: 168)
+                ScorePaletteView(
+                    selectedSymbol: $selectedSymbol,
+                    selectedFormShape: $selectedFormShape,
+                    placementTool: $placementTool
+                )
+                .frame(width: 176)
                 Divider()
             }
 
@@ -57,10 +116,11 @@ struct ScoreEditorView: View {
                 ScrollView([.horizontal, .vertical]) {
                     ScoreCanvasView(
                         score: score,
+                        selection: $selection,
+                        placementTool: $placementTool,
                         selectedSymbol: selectedSymbol,
-                        selectedObjectID: $selectedObjectID,
+                        selectedFormShape: selectedFormShape,
                         pixelsPerSecond: pixelsPerSecond,
-                        placementArmed: $placementArmed,
                         isInteracting: $isInteracting,
                         presentation: presentation,
                         playheadTime: (player.isPlaying || player.currentTime > 0) ? player.currentTime : nil,
@@ -68,13 +128,33 @@ struct ScoreEditorView: View {
                             guard let idx = score.objects.firstIndex(where: { $0.id == updated.id }) else { return }
                             score.objects[idx] = updated
                         },
-                        onPlace: { obj in
+                        onChangeField: { updated in
+                            guard let idx = score.timeFields.firstIndex(where: { $0.id == updated.id }) else { return }
+                            score.timeFields[idx] = updated
+                        },
+                        onChangeForm: { updated in
+                            guard let idx = score.dynamicForms.firstIndex(where: { $0.id == updated.id }) else { return }
+                            score.dynamicForms[idx] = updated
+                        },
+                        onPlaceObject: { obj in
                             score.objects.append(obj)
                             score.objects.sort { $0.start < $1.start }
-                            selectedObjectID = obj.id
+                            selection = .object(obj.id)
+                        },
+                        onPlaceField: { field in
+                            score.timeFields.append(field)
+                            score.timeFields.sort { $0.start < $1.start }
+                            selection = .timeField(field.id)
+                        },
+                        onPlaceForm: { form in
+                            score.dynamicForms.append(form)
+                            score.dynamicForms.sort { $0.start < $1.start }
+                            selection = .dynamicForm(form.id)
                         },
                         onInteractionEnded: {
                             score.objects.sort { $0.start < $1.start }
+                            score.timeFields.sort { $0.start < $1.start }
+                            score.dynamicForms.sort { $0.start < $1.start }
                         }
                     )
                     .padding(12)
@@ -88,33 +168,59 @@ struct ScoreEditorView: View {
                     canvasFocused = true
                     player.prepare(url: sourceURL)
                 }
-                .onChange(of: selectedObjectID) { _, _ in canvasFocused = true }
+                .onChange(of: selection) { _, _ in canvasFocused = true }
                 .onChange(of: sourceURL) { _, url in player.prepare(url: url) }
             }
 
             if isEditing {
                 Divider()
                 ScoreInspectorView(
-                    object: selectedBinding,
+                    object: selectedObjectBinding,
+                    timeField: selectedFieldBinding,
+                    dynamicForm: selectedFormBinding,
                     duration: score.duration,
                     onDelete: deleteSelected,
-                    onPlaySegment: {
-                        if let obj = selectedBinding.wrappedValue {
-                            player.play(from: obj.start, to: obj.end)
-                        }
-                    }
+                    onPlaySegment: playSelectedSegment
                 )
-                .frame(width: 230)
+                .frame(width: 240)
             }
         }
         .onAppear { canvasFocused = true }
         .onDisappear { player.stop() }
     }
 
+    private func playSelectedSegment() {
+        switch selection {
+        case .object(let id):
+            if let obj = score.objects.first(where: { $0.id == id }) {
+                player.play(from: obj.start, to: obj.end)
+            }
+        case .timeField(let id):
+            if let field = score.timeFields.first(where: { $0.id == id }) {
+                player.play(from: field.start, to: field.end)
+            }
+        case .dynamicForm(let id):
+            if let form = score.dynamicForms.first(where: { $0.id == id }) {
+                player.play(from: form.start, to: form.end)
+            }
+        case .none:
+            break
+        }
+    }
+
     private func deleteSelected() {
-        guard isEditing, let id = selectedObjectID else { return }
-        score.objects.removeAll { $0.id == id }
-        selectedObjectID = nil
+        guard isEditing else { return }
+        switch selection {
+        case .object(let id):
+            score.objects.removeAll { $0.id == id }
+        case .timeField(let id):
+            score.timeFields.removeAll { $0.id == id }
+        case .dynamicForm(let id):
+            score.dynamicForms.removeAll { $0.id == id }
+        case .none:
+            return
+        }
+        selection = .none
     }
 
     private func reanalyze() {
@@ -129,8 +235,13 @@ struct ScoreEditorView: View {
         )
         let merged = ScoreBuilder.mergeKeepingManual(auto: auto, previous: score)
         score = merged
-        selectedObjectID = nil
-        onStatus?("Omanalys klar — \(merged.objects.filter(\.autoGenerated).count) auto-objekt, \(merged.objects.filter { !$0.autoGenerated }.count) manuella.")
+        selection = .none
+        let manualN = merged.objects.filter { !$0.autoGenerated }.count
+            + merged.timeFields.filter { !$0.autoGenerated }.count
+            + merged.dynamicForms.filter { !$0.autoGenerated }.count
+        onStatus?(
+            "Omanalys klar — \(merged.objects.filter(\.autoGenerated).count) auto-objekt, \(manualN) manuella element behållna."
+        )
     }
 
     private var scoreToolbar: some View {
@@ -148,14 +259,15 @@ struct ScoreEditorView: View {
             .frame(maxWidth: 160)
             .onChange(of: presentation) { _, mode in
                 if mode == .view {
-                    placementArmed = false
-                    selectedObjectID = nil
+                    placementTool = .none
+                    selection = .none
                 }
             }
 
-            Text("\(score.objects.count) objekt")
+            Text("\(score.objects.count) obj · \(score.timeFields.count) fält · \(score.dynamicForms.count) former")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
 
             playbackControls
 
@@ -166,11 +278,11 @@ struct ScoreEditorView: View {
 
             if isEditing {
                 Button("Omanalysera") { reanalyze() }
-                    .help("Ny auto-analys från features. Manuella objekt behålls; auto-objekt ersätts.")
+                    .help("Ny auto-analys från features. Manuella objekt/fält/former behålls.")
                     .disabled(featureSeries == nil)
 
                 Button("Radera (⌫)") { deleteSelected() }
-                    .disabled(selectedObjectID == nil)
+                    .disabled(selection == .none)
                     .keyboardShortcut(.delete, modifiers: [])
 
                 Button("Spara") { onSave(score) }
@@ -195,15 +307,11 @@ struct ScoreEditorView: View {
             .disabled(sourceURL == nil)
             .help("Spela / pausa hela stycket")
 
-            Button {
-                if let obj = score.objects.first(where: { $0.id == selectedObjectID }) {
-                    player.play(from: obj.start, to: obj.end)
-                }
-            } label: {
+            Button { playSelectedSegment() } label: {
                 Image(systemName: "play.circle")
             }
-            .disabled(sourceURL == nil || selectedObjectID == nil)
-            .help("Spela markerat objekt")
+            .disabled(sourceURL == nil || selection == .none)
+            .help("Spela markerat objekt / fält / form")
 
             Button { player.stop() } label: {
                 Image(systemName: "stop.fill")
@@ -260,15 +368,20 @@ struct ScoreExportView: View {
                 .font(.headline)
             ScoreCanvasView(
                 score: score,
+                selection: .constant(.none),
+                placementTool: .constant(.none),
                 selectedSymbol: .pitchedSustained,
-                selectedObjectID: .constant(nil),
+                selectedFormShape: .crescendo,
                 pixelsPerSecond: pixelsPerSecond,
-                placementArmed: .constant(false),
                 isInteracting: .constant(false),
                 presentation: .view,
                 playheadTime: nil,
                 onChangeObject: { _ in },
-                onPlace: { _ in },
+                onChangeField: { _ in },
+                onChangeForm: { _ in },
+                onPlaceObject: { _ in },
+                onPlaceField: { _ in },
+                onPlaceForm: { _ in },
                 onInteractionEnded: {}
             )
         }
@@ -277,57 +390,115 @@ struct ScoreExportView: View {
 
 // MARK: - Palette / Inspector
 
-struct SymbolPaletteView: View {
-    @Binding var selected: ScoreSymbolKind
-    @Binding var placementArmed: Bool
+struct ScorePaletteView: View {
+    @Binding var selectedSymbol: ScoreSymbolKind
+    @Binding var selectedFormShape: DynamicForm.Shape
+    @Binding var placementTool: PlacementTool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Symbolpalett")
-                .font(.headline)
-            Text("Thoresen-inspirerad (förenklad)")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Palett")
+                    .font(.headline)
+                Text("Thoresen-inspirerad (förenklad)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
 
-            Toggle("Placera med klick", isOn: $placementArmed)
-                .toggleStyle(.switch)
-                .font(.caption)
-
-            ForEach(ScoreSymbolKind.allCases) { kind in
-                Button {
-                    selected = kind
-                    placementArmed = true
-                } label: {
-                    HStack(spacing: 8) {
-                        ScoreSymbolGlyph(kind: kind, filled: true, size: 18)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(kind.labelSV).font(.caption)
-                            Text(kind.mass.labelSV).font(.caption2).foregroundStyle(.secondary)
+                sectionTitle("Objekt")
+                ForEach(ScoreSymbolKind.allCases) { kind in
+                    Button {
+                        selectedSymbol = kind
+                        placementTool = .symbol(kind)
+                    } label: {
+                        HStack(spacing: 8) {
+                            ScoreSymbolGlyph(kind: kind, filled: true, size: 18)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(kind.labelSV).font(.caption)
+                                Text(kind.mass.labelSV).font(.caption2).foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 0)
                         }
-                        Spacer(minLength: 0)
+                        .padding(6)
+                        .background(pill(active: {
+                            if case .symbol(let s) = placementTool { return s == kind }
+                            return false
+                        }()))
                     }
-                    .padding(6)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(selected == kind && placementArmed ? Color.accentColor.opacity(0.15) : Color.clear)
-                    )
+                    .buttonStyle(.plain)
+                }
+
+                Divider()
+
+                sectionTitle("Tidsfält")
+                Button {
+                    placementTool = .timeField
+                } label: {
+                    Label("Placera tidsfält", systemImage: "rectangle.split.3x1")
+                        .font(.caption)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(6)
+                        .background(pill(active: placementTool == .timeField))
                 }
                 .buttonStyle(.plain)
-            }
+                Text("Färgade zoner i tid (time-fields).")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
 
-            Spacer()
-            Text("Edit = rutor/handtag. Viewer = rent partitur. PNG exporteras alltid som Viewer.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+                Divider()
+
+                sectionTitle("Dynamisk form")
+                ForEach(DynamicForm.Shape.allCases) { shape in
+                    Button {
+                        selectedFormShape = shape
+                        placementTool = .dynamicForm(shape)
+                    } label: {
+                        Text(shape.labelSV)
+                            .font(.caption)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(6)
+                            .background(pill(active: {
+                                if case .dynamicForm(let s) = placementTool { return s == shape }
+                                return false
+                            }()))
+                    }
+                    .buttonStyle(.plain)
+                }
+                Text("Kuvert under objektplanen.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                if placementTool != .none {
+                    Button("Avbryt placering") { placementTool = .none }
+                        .font(.caption)
+                }
+
+                Text("Edit = rutor/handtag. Viewer = rent partitur. PNG = alltid Viewer. ⌫ lämnar tidshål.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 4)
+            }
+            .padding(10)
         }
-        .padding(10)
         .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+    }
+
+    private func pill(active: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 6)
+            .fill(active ? Color.accentColor.opacity(0.15) : Color.clear)
     }
 }
 
 struct ScoreInspectorView: View {
     @Binding var object: ScoreObject?
+    @Binding var timeField: TimeField?
+    @Binding var dynamicForm: DynamicForm?
     var duration: Double
     var onDelete: () -> Void
     var onPlaySegment: (() -> Void)? = nil
@@ -337,45 +508,15 @@ struct ScoreInspectorView: View {
             Text("Inspector").font(.headline)
 
             if let obj = Binding($object) {
-                labeled("Etikett") { TextField("A", text: obj.label) }
-                labeled("Symbol") {
-                    Picker("Symbol", selection: obj.symbol) {
-                        ForEach(ScoreSymbolKind.allCases) { kind in
-                            Text(kind.labelSV).tag(kind)
-                        }
-                    }
-                    .labelsHidden()
-                }
-                Toggle("Fylld (annars öppen)", isOn: obj.filled)
-                labeled("Lane (0=hög)") {
-                    Stepper(value: obj.lane, in: 0...2) { Text("\(obj.wrappedValue.lane)") }
-                }
-                labeled("Start (s)") {
-                    TextField("start", value: obj.start, format: .number.precision(.fractionLength(2)))
-                }
-                labeled("Slut (s)") {
-                    TextField("end", value: obj.end, format: .number.precision(.fractionLength(2)))
-                }
-                labeled("Notering") {
-                    TextEditor(text: obj.note)
-                        .font(.caption)
-                        .frame(minHeight: 70)
-                        .border(Color.secondary.opacity(0.3))
-                }
-
-                if let onPlaySegment {
-                    Button("Spela segment", action: onPlaySegment)
-                }
-
-                Button("Radera objekt (⌫)", role: .destructive, action: onDelete)
-                Text("Radering lämnar tidshål. Andra objekt flyttas inte.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                objectInspector(obj)
+            } else if let field = Binding($timeField) {
+                fieldInspector(field)
+            } else if let form = Binding($dynamicForm) {
+                formInspector(form)
             } else {
-                Text("Inget objekt valt.")
+                Text("Inget valt.")
                     .foregroundStyle(.secondary)
-                Text("Växla till Edit för att markera och redigera.")
+                Text("Markera objekt, tidsfält eller dynamisk form i Edit.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -383,6 +524,100 @@ struct ScoreInspectorView: View {
         }
         .padding(12)
         .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    @ViewBuilder
+    private func objectInspector(_ obj: Binding<ScoreObject>) -> some View {
+        labeled("Etikett") { TextField("A", text: obj.label) }
+        labeled("Symbol") {
+            Picker("Symbol", selection: obj.symbol) {
+                ForEach(ScoreSymbolKind.allCases) { kind in
+                    Text(kind.labelSV).tag(kind)
+                }
+            }
+            .labelsHidden()
+        }
+        Toggle("Fylld (annars öppen)", isOn: obj.filled)
+        labeled("Lane (0=hög)") {
+            Stepper(value: obj.lane, in: 0...2) { Text("\(obj.wrappedValue.lane)") }
+        }
+        timeFields(start: obj.start, end: obj.end)
+        labeled("Notering") {
+            TextEditor(text: obj.note)
+                .font(.caption)
+                .frame(minHeight: 70)
+                .border(Color.secondary.opacity(0.3))
+        }
+        actionButtons(title: "Radera objekt (⌫)")
+    }
+
+    @ViewBuilder
+    private func fieldInspector(_ field: Binding<TimeField>) -> some View {
+        labeled("Namn") { TextField("Fält", text: field.name) }
+        labeled("Färg") {
+            HStack(spacing: 6) {
+                ForEach(TimeField.paletteColors, id: \.self) { hex in
+                    Circle()
+                        .fill(Color(hex: hex) ?? .gray)
+                        .frame(width: 18, height: 18)
+                        .overlay(
+                            Circle().stroke(
+                                field.wrappedValue.colorHex == hex ? Color.accentColor : Color.clear,
+                                lineWidth: 2
+                            )
+                        )
+                        .onTapGesture {
+                            field.wrappedValue.colorHex = hex
+                            field.wrappedValue.autoGenerated = false
+                        }
+                }
+            }
+        }
+        timeFields(start: field.start, end: field.end)
+            .onChange(of: field.wrappedValue.start) { _, _ in field.wrappedValue.autoGenerated = false }
+            .onChange(of: field.wrappedValue.end) { _, _ in field.wrappedValue.autoGenerated = false }
+        actionButtons(title: "Radera tidsfält (⌫)")
+    }
+
+    @ViewBuilder
+    private func formInspector(_ form: Binding<DynamicForm>) -> some View {
+        labeled("Form") {
+            Picker("Form", selection: form.shape) {
+                ForEach(DynamicForm.Shape.allCases) { shape in
+                    Text(shape.labelSV).tag(shape)
+                }
+            }
+            .labelsHidden()
+        }
+        labeled("Intensitet") {
+            Slider(value: form.intensity, in: 0.2...1.5)
+        }
+        timeFields(start: form.start, end: form.end)
+        actionButtons(title: "Radera form (⌫)")
+    }
+
+    private func timeFields(start: Binding<Double>, end: Binding<Double>) -> some View {
+        Group {
+            labeled("Start (s)") {
+                TextField("start", value: start, format: .number.precision(.fractionLength(2)))
+            }
+            labeled("Slut (s)") {
+                TextField("end", value: end, format: .number.precision(.fractionLength(2)))
+            }
+        }
+    }
+
+    private func actionButtons(title: String) -> some View {
+        Group {
+            if let onPlaySegment {
+                Button("Spela segment", action: onPlaySegment)
+            }
+            Button(title, role: .destructive, action: onDelete)
+            Text("Radering lämnar tidshål. Andra element flyttas inte.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private func labeled<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
@@ -397,19 +632,25 @@ struct ScoreInspectorView: View {
 
 struct ScoreCanvasView: View {
     let score: ScoreDocument
+    @Binding var selection: ScoreEditSelection
+    @Binding var placementTool: PlacementTool
     var selectedSymbol: ScoreSymbolKind
-    @Binding var selectedObjectID: ScoreObject.ID?
+    var selectedFormShape: DynamicForm.Shape
     var pixelsPerSecond: CGFloat
-    @Binding var placementArmed: Bool
     @Binding var isInteracting: Bool
     var presentation: ScorePresentationMode
     var playheadTime: Double?
     var onChangeObject: (ScoreObject) -> Void
-    var onPlace: (ScoreObject) -> Void
+    var onChangeField: (TimeField) -> Void
+    var onChangeForm: (DynamicForm) -> Void
+    var onPlaceObject: (ScoreObject) -> Void
+    var onPlaceField: (TimeField) -> Void
+    var onPlaceForm: (DynamicForm) -> Void
     var onInteractionEnded: () -> Void
 
     private let laneHeight: CGFloat = 56
     private let laneCount = 3
+    private let fieldStripHeight: CGFloat = 22
     private let envelopeHeight: CGFloat = 70
     private let rulerHeight: CGFloat = 24
     private let bracketHeight: CGFloat = 28
@@ -422,8 +663,10 @@ struct ScoreCanvasView: View {
 
     private var objectAreaHeight: CGFloat { CGFloat(laneCount) * laneHeight }
 
+    private var objectTop: CGFloat { rulerHeight + fieldStripHeight }
+
     private var totalHeight: CGFloat {
-        rulerHeight + objectAreaHeight + envelopeHeight + bracketHeight + 16
+        rulerHeight + fieldStripHeight + objectAreaHeight + envelopeHeight + bracketHeight + 16
     }
 
     var body: some View {
@@ -432,19 +675,44 @@ struct ScoreCanvasView: View {
                 .fill(Color.white)
                 .frame(width: canvasWidth, height: totalHeight)
 
+            // Background wash for time fields across object lanes
             ForEach(score.timeFields) { field in
                 Rectangle()
-                    .fill(field.color.opacity(presentation == .view ? 0.35 : 0.45))
+                    .fill(field.color.opacity(presentation == .view ? 0.32 : 0.42))
                     .frame(width: max(2, x(field.end) - x(field.start)), height: objectAreaHeight)
-                    .offset(x: x(field.start), y: rulerHeight)
+                    .offset(x: x(field.start), y: objectTop)
                     .allowsHitTesting(false)
             }
 
             ruler.allowsHitTesting(false)
 
+            // Editable time-field strip
+            ForEach(score.timeFields) { field in
+                TimeFieldCanvasItem(
+                    field: field,
+                    selected: isEditing && selection == .timeField(field.id),
+                    pixelsPerSecond: pixelsPerSecond,
+                    stripHeight: fieldStripHeight,
+                    stripY: rulerHeight,
+                    scoreDuration: score.duration,
+                    presentation: presentation,
+                    onSelect: {
+                        guard isEditing else { return }
+                        selection = .timeField(field.id)
+                        placementTool = .none
+                    },
+                    onChange: onChangeField,
+                    onInteractingChanged: { active in
+                        guard isEditing else { return }
+                        isInteracting = active
+                        if !active { onInteractionEnded() }
+                    }
+                )
+            }
+
             ForEach(0..<laneCount, id: \.self) { lane in
                 Path { path in
-                    let y = rulerHeight + CGFloat(lane + 1) * laneHeight
+                    let y = objectTop + CGFloat(lane + 1) * laneHeight
                     path.move(to: CGPoint(x: 0, y: y))
                     path.addLine(to: CGPoint(x: canvasWidth, y: y))
                 }
@@ -455,17 +723,17 @@ struct ScoreCanvasView: View {
             ForEach(score.objects) { obj in
                 ScoreObjectCanvasItem(
                     object: obj,
-                    selected: isEditing && selectedObjectID == obj.id,
+                    selected: isEditing && selection == .object(obj.id),
                     pixelsPerSecond: pixelsPerSecond,
                     laneHeight: laneHeight,
-                    rulerHeight: rulerHeight,
+                    objectTop: objectTop,
                     laneCount: laneCount,
                     scoreDuration: score.duration,
                     presentation: presentation,
                     onSelect: {
                         guard isEditing else { return }
-                        selectedObjectID = obj.id
-                        placementArmed = false
+                        selection = .object(obj.id)
+                        placementTool = .none
                     },
                     onChange: onChangeObject,
                     onInteractingChanged: { active in
@@ -477,21 +745,38 @@ struct ScoreCanvasView: View {
             }
 
             ForEach(score.dynamicForms) { form in
-                dynamicFormView(form)
-                    .offset(y: rulerHeight + objectAreaHeight)
-                    .allowsHitTesting(false)
+                DynamicFormCanvasItem(
+                    form: form,
+                    selected: isEditing && selection == .dynamicForm(form.id),
+                    pixelsPerSecond: pixelsPerSecond,
+                    envelopeHeight: envelopeHeight,
+                    envelopeY: objectTop + objectAreaHeight,
+                    scoreDuration: score.duration,
+                    presentation: presentation,
+                    onSelect: {
+                        guard isEditing else { return }
+                        selection = .dynamicForm(form.id)
+                        placementTool = .none
+                    },
+                    onChange: onChangeForm,
+                    onInteractingChanged: { active in
+                        guard isEditing else { return }
+                        isInteracting = active
+                        if !active { onInteractionEnded() }
+                    }
+                )
             }
 
             ForEach(score.brackets) { bracket in
                 bracketView(bracket)
-                    .offset(y: rulerHeight + objectAreaHeight + envelopeHeight)
+                    .offset(y: objectTop + objectAreaHeight + envelopeHeight)
                     .allowsHitTesting(false)
             }
 
             if let t = playheadTime {
                 Rectangle()
                     .fill(Color.orange)
-                    .frame(width: 2, height: objectAreaHeight + envelopeHeight)
+                    .frame(width: 2, height: fieldStripHeight + objectAreaHeight + envelopeHeight)
                     .offset(x: x(t), y: rulerHeight)
                     .allowsHitTesting(false)
             }
@@ -500,12 +785,12 @@ struct ScoreCanvasView: View {
         .contentShape(Rectangle())
         .onTapGesture { location in
             guard isEditing else { return }
-            guard placementArmed else {
-                selectedObjectID = nil
+            guard placementTool != .none else {
+                selection = .none
                 return
             }
-            placeObject(at: location)
-            placementArmed = false
+            place(at: location)
+            placementTool = .none
         }
     }
 
@@ -530,34 +815,6 @@ struct ScoreCanvasView: View {
         .frame(width: canvasWidth, height: rulerHeight, alignment: .topLeading)
     }
 
-    private func dynamicFormView(_ form: DynamicForm) -> some View {
-        let w = max(8, x(form.end) - x(form.start))
-        let h = envelopeHeight - 10
-        return Canvas { context, _ in
-            var path = Path()
-            switch form.shape {
-            case .crescendo:
-                path.move(to: CGPoint(x: 0, y: h))
-                path.addLine(to: CGPoint(x: w, y: h * 0.15))
-                path.addLine(to: CGPoint(x: w, y: h))
-            case .diminuendo:
-                path.move(to: CGPoint(x: 0, y: h * 0.15))
-                path.addLine(to: CGPoint(x: w, y: h))
-                path.addLine(to: CGPoint(x: 0, y: h))
-            case .swell:
-                path.move(to: CGPoint(x: 0, y: h))
-                path.addLine(to: CGPoint(x: w * 0.5, y: h * 0.1))
-                path.addLine(to: CGPoint(x: w, y: h))
-            case .plateau:
-                path.addRect(CGRect(x: 0, y: h * 0.45, width: w, height: h * 0.2))
-            }
-            context.fill(path, with: .color(.black.opacity(0.12)))
-            context.stroke(path, with: .color(.black.opacity(0.55)), lineWidth: 1)
-        }
-        .frame(width: w, height: h)
-        .offset(x: x(form.start), y: 4)
-    }
-
     private func bracketView(_ bracket: ScoreBracket) -> some View {
         let w = max(10, x(bracket.end) - x(bracket.start))
         return VStack(spacing: 2) {
@@ -580,31 +837,289 @@ struct ScoreCanvasView: View {
         CGFloat(time) * pixelsPerSecond + 8
     }
 
-    private func placeObject(at location: CGPoint) {
-        let t = max(0, min(score.duration - 0.5, Double((location.x - 8) / pixelsPerSecond)))
-        let laneY = location.y - rulerHeight
-        guard laneY >= 0, laneY < objectAreaHeight else { return }
-        let lane = min(laneCount - 1, max(0, Int(laneY / laneHeight)))
-        let obj = ScoreObject(
-            label: nextLabel(),
-            start: t,
-            end: min(score.duration, t + 1.5),
-            lane: lane,
-            symbol: selectedSymbol,
-            filled: true,
-            note: "manuell",
-            autoGenerated: false
-        )
-        onPlace(obj)
+    private func place(at location: CGPoint) {
+        let t = max(0, min(score.duration - 0.4, Double((location.x - 8) / pixelsPerSecond)))
+        switch placementTool {
+        case .symbol(let kind):
+            let laneY = location.y - objectTop
+            guard laneY >= 0, laneY < objectAreaHeight else { return }
+            let lane = min(laneCount - 1, max(0, Int(laneY / laneHeight)))
+            let obj = ScoreObject(
+                label: nextObjectLabel(),
+                start: t,
+                end: min(score.duration, t + 1.5),
+                lane: lane,
+                symbol: kind,
+                filled: true,
+                note: "manuell",
+                autoGenerated: false
+            )
+            onPlaceObject(obj)
+        case .timeField:
+            let field = TimeField(
+                start: t,
+                end: min(score.duration, t + max(2.0, score.duration * 0.12)),
+                name: nextFieldName(),
+                colorHex: TimeField.paletteColors[score.timeFields.count % TimeField.paletteColors.count],
+                autoGenerated: false
+            )
+            onPlaceField(field)
+        case .dynamicForm(let shape):
+            let form = DynamicForm(
+                start: t,
+                end: min(score.duration, t + max(1.5, score.duration * 0.08)),
+                shape: shape,
+                intensity: 1,
+                autoGenerated: false
+            )
+            onPlaceForm(form)
+        case .none:
+            break
+        }
     }
 
-    private func nextLabel() -> String {
+    private func nextObjectLabel() -> String {
         let used = Set(score.objects.map(\.label))
         for ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZ" {
             let s = String(ch)
             if !used.contains(s) { return s }
         }
         return "X\(score.objects.count + 1)"
+    }
+
+    private func nextFieldName() -> String {
+        "Fält \(score.timeFields.count + 1)"
+    }
+}
+
+// MARK: - Time field item
+
+private struct TimeFieldCanvasItem: View {
+    let field: TimeField
+    var selected: Bool
+    var pixelsPerSecond: CGFloat
+    var stripHeight: CGFloat
+    var stripY: CGFloat
+    var scoreDuration: Double
+    var presentation: ScorePresentationMode
+    var onSelect: () -> Void
+    var onChange: (TimeField) -> Void
+    var onInteractingChanged: (Bool) -> Void
+
+    @State private var draft: TimeField?
+    @State private var dragOrigin: TimeField?
+    @State private var mode: DragMode = .move
+
+    private enum DragMode { case move, resizeStart, resizeEnd }
+
+    private var live: TimeField { draft ?? field }
+    private var width: CGFloat { max(presentation == .view ? 20 : 32, CGFloat(live.end - live.start) * pixelsPerSecond) }
+    private var xPos: CGFloat { CGFloat(live.start) * pixelsPerSecond + 8 }
+    private var edgeWidth: CGFloat { min(12, max(8, width * 0.18)) }
+
+    var body: some View {
+        Group {
+            if presentation == .view {
+                Text(live.name)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.primary.opacity(0.7))
+                    .frame(width: width, height: stripHeight - 4, alignment: .leading)
+                    .padding(.leading, 4)
+            } else {
+                HStack(spacing: 0) {
+                    edgeBar
+                        .frame(width: edgeWidth, height: stripHeight - 4)
+                        .highPriorityGesture(dragGesture(mode: .resizeStart))
+
+                    Text(live.name)
+                        .font(.system(size: 10, weight: .semibold))
+                        .lineLimit(1)
+                        .padding(.horizontal, 4)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .gesture(dragGesture(mode: .move))
+                        .onTapGesture { onSelect() }
+
+                    edgeBar
+                        .frame(width: edgeWidth, height: stripHeight - 4)
+                        .highPriorityGesture(dragGesture(mode: .resizeEnd))
+                }
+                .frame(width: width, height: stripHeight - 4)
+                .background(RoundedRectangle(cornerRadius: 3).fill(live.color.opacity(0.85)))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 3)
+                        .stroke(selected ? Color.accentColor : Color.primary.opacity(0.25), lineWidth: selected ? 2 : 1)
+                )
+                .help("Tidsfält: mitten = flytta, kanter = längd.")
+            }
+        }
+        .offset(x: xPos, y: stripY + 2)
+    }
+
+    private var edgeBar: some View {
+        Rectangle()
+            .fill(selected ? Color.accentColor.opacity(0.45) : Color.black.opacity(0.12))
+            .contentShape(Rectangle())
+    }
+
+    private func dragGesture(mode requested: DragMode) -> some Gesture {
+        DragGesture(minimumDistance: 2)
+            .onChanged { value in
+                onSelect()
+                if dragOrigin == nil {
+                    dragOrigin = field
+                    draft = field
+                    mode = requested
+                    onInteractingChanged(true)
+                }
+                guard var working = draft, let origin = dragOrigin else { return }
+                let dt = Double(value.translation.width / pixelsPerSecond)
+                switch mode {
+                case .move:
+                    let dur = origin.end - origin.start
+                    var start = origin.start + dt
+                    start = min(max(0, start), max(0, scoreDuration - dur))
+                    working.start = start
+                    working.end = start + dur
+                case .resizeStart:
+                    working.start = min(origin.end - 0.15, max(0, origin.start + dt))
+                case .resizeEnd:
+                    working.end = max(origin.start + 0.15, min(scoreDuration, origin.end + dt))
+                }
+                working.autoGenerated = false
+                draft = working
+                onChange(working)
+            }
+            .onEnded { _ in
+                if let draft { onChange(draft) }
+                self.draft = nil
+                dragOrigin = nil
+                onInteractingChanged(false)
+            }
+    }
+}
+
+// MARK: - Dynamic form item
+
+private struct DynamicFormCanvasItem: View {
+    let form: DynamicForm
+    var selected: Bool
+    var pixelsPerSecond: CGFloat
+    var envelopeHeight: CGFloat
+    var envelopeY: CGFloat
+    var scoreDuration: Double
+    var presentation: ScorePresentationMode
+    var onSelect: () -> Void
+    var onChange: (DynamicForm) -> Void
+    var onInteractingChanged: (Bool) -> Void
+
+    @State private var draft: DynamicForm?
+    @State private var dragOrigin: DynamicForm?
+    @State private var mode: DragMode = .move
+
+    private enum DragMode { case move, resizeStart, resizeEnd }
+
+    private var live: DynamicForm { draft ?? form }
+    private var width: CGFloat { max(presentation == .view ? 12 : 28, CGFloat(live.end - live.start) * pixelsPerSecond) }
+    private var xPos: CGFloat { CGFloat(live.start) * pixelsPerSecond + 8 }
+    private var h: CGFloat { envelopeHeight - 10 }
+    private var edgeWidth: CGFloat { min(12, max(8, width * 0.18)) }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            formShape
+                .frame(width: width, height: h)
+                .opacity(0.35 + 0.45 * min(1.5, live.intensity) / 1.5)
+
+            if presentation == .edit {
+                HStack(spacing: 0) {
+                    edgeBar
+                        .frame(width: edgeWidth, height: h)
+                        .highPriorityGesture(dragGesture(mode: .resizeStart))
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .gesture(dragGesture(mode: .move))
+                        .onTapGesture { onSelect() }
+                    edgeBar
+                        .frame(width: edgeWidth, height: h)
+                        .highPriorityGesture(dragGesture(mode: .resizeEnd))
+                }
+                .frame(width: width, height: h)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 3)
+                        .stroke(selected ? Color.accentColor : Color.clear, lineWidth: 2)
+                )
+            }
+        }
+        .offset(x: xPos, y: envelopeY + 4)
+        .help(presentation == .edit ? "Dynamisk form: mitten = flytta, kanter = längd." : live.shape.labelSV)
+    }
+
+    private var formShape: some View {
+        Canvas { context, _ in
+            var path = Path()
+            switch live.shape {
+            case .crescendo:
+                path.move(to: CGPoint(x: 0, y: h))
+                path.addLine(to: CGPoint(x: width, y: h * 0.15))
+                path.addLine(to: CGPoint(x: width, y: h))
+            case .diminuendo:
+                path.move(to: CGPoint(x: 0, y: h * 0.15))
+                path.addLine(to: CGPoint(x: width, y: h))
+                path.addLine(to: CGPoint(x: 0, y: h))
+            case .swell:
+                path.move(to: CGPoint(x: 0, y: h))
+                path.addLine(to: CGPoint(x: width * 0.5, y: h * (1 - 0.7 * min(1.2, live.intensity))))
+                path.addLine(to: CGPoint(x: width, y: h))
+            case .plateau:
+                let top = h * (0.55 - 0.2 * min(1.2, live.intensity))
+                path.addRect(CGRect(x: 0, y: top, width: width, height: max(4, h - top - 4)))
+            }
+            context.fill(path, with: .color(.black.opacity(0.14)))
+            context.stroke(path, with: .color(.black.opacity(0.55)), lineWidth: 1)
+        }
+    }
+
+    private var edgeBar: some View {
+        Rectangle()
+            .fill(selected ? Color.accentColor.opacity(0.35) : Color.black.opacity(0.06))
+            .contentShape(Rectangle())
+    }
+
+    private func dragGesture(mode requested: DragMode) -> some Gesture {
+        DragGesture(minimumDistance: 2)
+            .onChanged { value in
+                onSelect()
+                if dragOrigin == nil {
+                    dragOrigin = form
+                    draft = form
+                    mode = requested
+                    onInteractingChanged(true)
+                }
+                guard var working = draft, let origin = dragOrigin else { return }
+                let dt = Double(value.translation.width / pixelsPerSecond)
+                switch mode {
+                case .move:
+                    let dur = origin.end - origin.start
+                    var start = origin.start + dt
+                    start = min(max(0, start), max(0, scoreDuration - dur))
+                    working.start = start
+                    working.end = start + dur
+                case .resizeStart:
+                    working.start = min(origin.end - 0.12, max(0, origin.start + dt))
+                case .resizeEnd:
+                    working.end = max(origin.start + 0.12, min(scoreDuration, origin.end + dt))
+                }
+                working.autoGenerated = false
+                draft = working
+                onChange(working)
+            }
+            .onEnded { _ in
+                if let draft { onChange(draft) }
+                self.draft = nil
+                dragOrigin = nil
+                onInteractingChanged(false)
+            }
     }
 }
 
@@ -615,7 +1130,7 @@ private struct ScoreObjectCanvasItem: View {
     var selected: Bool
     var pixelsPerSecond: CGFloat
     var laneHeight: CGFloat
-    var rulerHeight: CGFloat
+    var objectTop: CGFloat
     var laneCount: Int
     var scoreDuration: Double
     var presentation: ScorePresentationMode
@@ -636,7 +1151,7 @@ private struct ScoreObjectCanvasItem: View {
     }
 
     private var xPos: CGFloat { CGFloat(live.start) * pixelsPerSecond + 8 }
-    private var yPos: CGFloat { rulerHeight + CGFloat(live.lane) * laneHeight + 8 }
+    private var yPos: CGFloat { objectTop + CGFloat(live.lane) * laneHeight + 8 }
     private var edgeWidth: CGFloat { min(14, max(10, width * 0.2)) }
 
     var body: some View {
@@ -667,7 +1182,6 @@ private struct ScoreObjectCanvasItem: View {
             }
         }
         .frame(width: width, height: 28, alignment: .leading)
-        // Ingen bakgrund, ingen ram — rent partitur.
     }
 
     private var editorBody: some View {
