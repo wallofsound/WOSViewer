@@ -249,60 +249,73 @@ struct ScoreEditorView: View {
     }
 
     private var scoreToolbar: some View {
-        HStack(spacing: 8) {
-            Text("Score — \(score.sourceName)")
-                .font(.headline)
-                .lineLimit(1)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Text("Score — \(score.sourceName)")
+                    .font(.headline)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
 
-            Picker("", selection: $presentation) {
-                ForEach(ScorePresentationMode.allCases) { mode in
-                    Text(mode.rawValue).tag(mode)
+                Picker("", selection: $presentation) {
+                    ForEach(ScorePresentationMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
                 }
-            }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 160)
-            .onChange(of: presentation) { _, mode in
-                if mode == .view {
-                    placementTool = .none
-                    selection = .none
+                .pickerStyle(.segmented)
+                .frame(width: 150)
+                .onChange(of: presentation) { _, mode in
+                    if mode == .view {
+                        placementTool = .none
+                        selection = .none
+                    }
                 }
+
+                Text("\(score.objects.count) obj · \(score.timeFields.count) fält · \(score.dynamicForms.count) former")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 8)
+
+                playbackControls
             }
 
-            Text("\(score.objects.count) obj · \(score.timeFields.count) fält · \(score.dynamicForms.count) former")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+            HStack(spacing: 12) {
+                HStack(spacing: 6) {
+                    Text("Zoom")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Slider(value: $pixelsPerSecond, in: 12...80)
+                        .frame(width: 120)
+                }
 
-            playbackControls
+                Toggle("Spektrogram", isOn: $showSpectrogram)
+                    .toggleStyle(.checkbox)
+                    .fixedSize()
+                    .help(spectrogram == nil
+                          ? "Spektrogram finns bara vid ljudanalys (inte CSV)."
+                          : "Mel-spektrogram under objektplanen (låg frekvens nederst).")
+                    .disabled(spectrogram == nil)
 
-            Spacer(minLength: 8)
+                Spacer(minLength: 8)
 
-            Slider(value: $pixelsPerSecond, in: 12...80)
-                .frame(width: 100)
+                if isEditing {
+                    Button("Omanalysera") { reanalyze() }
+                        .help("Ny auto-analys från features. Manuella objekt/fält/former behålls.")
+                        .disabled(featureSeries == nil)
 
-            Toggle("Spektrogram", isOn: $showSpectrogram)
-                .toggleStyle(.checkbox)
-                .help(spectrogram == nil
-                      ? "Spektrogram finns bara vid ljudanalys (inte CSV)."
-                      : "Mel-spektrogram under objektplanen (låg frekvens nederst).")
-                .disabled(spectrogram == nil)
+                    Button("Radera (⌫)") { deleteSelected() }
+                        .disabled(selection == .none)
+                        .keyboardShortcut(.delete, modifiers: [])
 
-            if isEditing {
-                Button("Omanalysera") { reanalyze() }
-                    .help("Ny auto-analys från features. Manuella objekt/fält/former behålls.")
-                    .disabled(featureSeries == nil)
+                    Button("Spara") { onSave(score) }
+                        .buttonStyle(.borderedProminent)
+                        .keyboardShortcut("s", modifiers: .command)
+                }
 
-                Button("Radera (⌫)") { deleteSelected() }
-                    .disabled(selection == .none)
-                    .keyboardShortcut(.delete, modifiers: [])
-
-                Button("Spara") { onSave(score) }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut("s", modifiers: .command)
+                Button("PNG…") { exportScorePNG() }
+                    .help("Exporterar score i Viewer-stil (utan editrutor).")
             }
-
-            Button("PNG…") { exportScorePNG() }
-                .help("Exporterar score i Viewer-stil (utan editrutor).")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
