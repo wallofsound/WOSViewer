@@ -11,10 +11,14 @@ final class ScoreAudioPlayer: ObservableObject {
     private var timer: Timer?
     private var segmentEnd: Double?
     private var sourceURL: URL?
+    private var pieceDuration: Double = 0
+
+    var hasAudio: Bool { player != nil }
 
     func prepare(url: URL?) {
         stop()
         sourceURL = url
+        pieceDuration = 0
         guard let url else {
             player = nil
             return
@@ -24,8 +28,20 @@ final class ScoreAudioPlayer: ObservableObject {
         do {
             player = try AVAudioPlayer(contentsOf: url)
             player?.prepareToPlay()
+            pieceDuration = player?.duration ?? 0
         } catch {
             player = nil
+        }
+    }
+
+    func seek(to time: Double, duration: Double? = nil) {
+        guard let player else { return }
+        let limit = duration ?? max(pieceDuration, player.duration)
+        let t = min(max(0, time), max(0, limit - 0.01))
+        player.currentTime = t
+        currentTime = t
+        if isPlaying {
+            segmentEnd = limit
         }
     }
 
@@ -34,8 +50,8 @@ final class ScoreAudioPlayer: ObservableObject {
         if isPlaying {
             pause()
         } else {
-            segmentEnd = duration
-            play(from: currentTime > 0 && currentTime < duration - 0.05 ? currentTime : 0, to: duration)
+            let start = currentTime > 0 && currentTime < duration - 0.05 ? currentTime : 0
+            play(from: start, to: duration)
         }
     }
 
@@ -53,6 +69,7 @@ final class ScoreAudioPlayer: ObservableObject {
         player?.pause()
         isPlaying = false
         stopTimer()
+        // Behåll currentTime — nästa play fortsätter härifrån.
     }
 
     func stop() {

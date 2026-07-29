@@ -127,7 +127,10 @@ struct ScoreEditorView: View {
                         presentation: presentation,
                         spectrogram: spectrogram,
                         showSpectrogram: showSpectrogram,
-                        playheadTime: (player.isPlaying || player.currentTime > 0) ? player.currentTime : nil,
+                        playheadTime: player.hasAudio ? player.currentTime : nil,
+                        onSeek: { t in
+                            player.seek(to: t, duration: score.duration)
+                        },
                         onChangeObject: { updated in
                             guard let idx = score.objects.firstIndex(where: { $0.id == updated.id }) else { return }
                             score.objects[idx] = updated
@@ -329,7 +332,7 @@ struct ScoreEditorView: View {
                 Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
             }
             .disabled(sourceURL == nil)
-            .help("Spela / pausa hela stycket")
+            .help("Spela / pausa från playhead. Dra orange linje eller linjalen för startposition.")
 
             Button { playSelectedSegment() } label: {
                 Image(systemName: "play.circle")
@@ -407,6 +410,7 @@ struct ScoreExportView: View {
                 spectrogram: spectrogram,
                 showSpectrogram: spectrogram != nil,
                 playheadTime: nil,
+                onSeek: nil,
                 onChangeObject: { _ in },
                 onChangeField: { _ in },
                 onChangeForm: { _ in },
@@ -673,6 +677,7 @@ struct ScoreCanvasView: View {
     var spectrogram: SpectrogramData? = nil
     var showSpectrogram: Bool = false
     var playheadTime: Double?
+    var onSeek: ((Double) -> Void)? = nil
     var onChangeObject: (ScoreObject) -> Void
     var onChangeField: (TimeField) -> Void
     var onChangeForm: (DynamicForm) -> Void
@@ -729,7 +734,7 @@ struct ScoreCanvasView: View {
                     .allowsHitTesting(false)
             }
 
-            ruler.allowsHitTesting(false)
+            ruler
 
             // Editable time-field strip
             ForEach(score.timeFields) { field in
@@ -819,11 +824,19 @@ struct ScoreCanvasView: View {
             }
 
             if let t = playheadTime {
-                Rectangle()
-                    .fill(Color.orange)
-                    .frame(width: 2, height: fieldStripHeight + objectAreaHeight + envelopeHeight)
-                    .offset(x: x(t), y: rulerHeight)
-                    .allowsHitTesting(false)
+                PlayheadView(
+                    time: t,
+                    pixelsPerSecond: pixelsPerSecond,
+                    height: fieldStripHeight + objectAreaHeight + envelopeHeight,
+                    scoreDuration: score.duration,
+                    enabled: onSeek != nil,
+                    onSeek: { newTime in onSeek?(newTime) },
+                    onInteractingChanged: { active in
+                        isInteracting = active
+                    }
+                )
+                .offset(y: rulerHeight)
+                .zIndex(50)
             }
         }
         .frame(width: canvasWidth, height: totalHeight, alignment: .topLeading)
@@ -858,6 +871,24 @@ struct ScoreCanvasView: View {
             }
         }
         .frame(width: canvasWidth, height: rulerHeight, alignment: .topLeading)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    guard onSeek != nil else { return }
+                    isInteracting = true
+                    onSeek?(timeAt(x: value.location.x))
+                }
+                .onEnded { _ in
+                    isInteracting = false
+                }
+        )
+        .help(onSeek == nil ? "" : "Klicka eller dra i linjalen för att sätta startposition.")
+    }
+
+    private func timeAt(x px: CGFloat) -> Double {
+        let t = Double((px - 8) / pixelsPerSecond)
+        return min(max(0, t), max(0, score.duration - 0.01))
     }
 
     private func bracketView(_ bracket: ScoreBracket) -> some View {
@@ -934,6 +965,56 @@ struct ScoreCanvasView: View {
 
     private func nextFieldName() -> String {
         "Fält \(score.timeFields.count + 1)"
+    }
+}
+
+// MARK: - Playhead scrubber
+
+private struct PlayheadView: View {
+    var time: Double
+    var pixelsPerSecond: CGFloat
+    var height: CGFloat
+    var scoreDuration: Double
+    var enabled: Bool
+    var onSeek: (Double) -> Void
+    var onInteractingChanged: (Bool) -> Void
+
+    @State private var dragOrigin: Double?
+
+    private var xPos: CGFloat { CGFloat(time) * pixelsPerSecond + 8 }
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            Rectangle()
+                .fill(Color.orange)
+                .frame(width: 2, height: height)
+            Capsule()
+                .fill(Color.orange)
+                .frame(width: 10, height: 14)
+                .offset(y: -2)
+        }
+        .frame(width: 16, height: height, alignment: .top)
+        .contentShape(Rectangle())
+        .offset(x: xPos - 8)
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    guard enabled else { return }
+                    if dragOrigin == nil {
+                        dragOrigin = time
+                        onInteractingChanged(true)
+                    }
+                    let dt = Double(value.translation.width / pixelsPerSecond)
+                    let t = (dragOrigin ?? time) + dt
+                    onSeek(min(max(0, t), max(0, scoreDuration - 0.01)))
+                }
+                .onEnded { _ in
+                    dragOrigin = nil
+                    onInteractingChanged(false)
+                }
+        )
+        .help(enabled ? "Dra playhead eller linjalen för startposition. Play fortsätter härifrån. Stop återställer till 0." : "")
+        .allowsHitTesting(enabled)
     }
 }
 

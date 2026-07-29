@@ -10,7 +10,10 @@
 | **2b** | Förfinad auto-analys (onset/offset, adaptiv klassning, MFCC-familjer) | Klar |
 | **3** | Manuella time-fields & dynamic forms | Klar |
 | **3b** | Spektrogram-underlag (toggle) under objektplanen | Klar |
+| **3c** | Playhead-scrub (dra linje / linjal → startposition) | Klar |
 | **4** | SVG/PDF-export (+ ev. ännu bättre clustering) | Senare |
+| **5** | Objektsiktbarhet via energi (RMS-filter) | Senare |
+| **6** | Pitch/harmonicitet → Nashville (tonal musik) | Senare |
 
 
 ## Auto-analys (2b)
