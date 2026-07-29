@@ -11,9 +11,10 @@
 | **3** | Manuella time-fields & dynamic forms | Klar |
 | **3b** | Spektrogram-underlag (toggle) under objektplanen | Klar |
 | **3c** | Playhead-scrub (dra linje / linjal → startposition) | Klar |
+| **3d** | Objektsiktbarhet via energi (RMS-filter) | Klar |
 | **4** | SVG/PDF-export (+ ev. ännu bättre clustering) | Senare |
-| **5** | Objektsiktbarhet via energi (RMS-filter) | Senare |
-| **6** | Pitch/harmonicitet → Nashville (tonal musik) | Senare |
+| **5** | Pitch/harmonicitet → Nashville (tonal musik) | Senare |
+| **6** | MusicEyes-läge (separat) | Senare |
 
 
 ## Auto-analys (2b)
