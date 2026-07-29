@@ -47,6 +47,7 @@ enum ScoreExporter {
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
         objectVisibility: Double,
+        familyFilter: InstrumentFamily? = nil,
         showNashville: Bool = false,
         showHarmonicColor: Bool = false,
         harmonicKeyRoot: Int = 0,
@@ -72,6 +73,7 @@ enum ScoreExporter {
                     pixelsPerSecond: pixelsPerSecond,
                     spectrogram: spectrogram,
                     objectVisibility: objectVisibility,
+                    familyFilter: familyFilter,
                     showNashville: showNashville,
                     showHarmonicColor: showHarmonicColor,
                     harmonicKeyRoot: harmonicKeyRoot,
@@ -84,6 +86,7 @@ enum ScoreExporter {
                     pixelsPerSecond: pixelsPerSecond,
                     spectrogram: spectrogram,
                     objectVisibility: objectVisibility,
+                    familyFilter: familyFilter,
                     showNashville: showNashville,
                     showHarmonicColor: showHarmonicColor,
                     harmonicKeyRoot: harmonicKeyRoot,
@@ -96,6 +99,7 @@ enum ScoreExporter {
                     pixelsPerSecond: pixelsPerSecond,
                     spectrogram: spectrogram,
                     objectVisibility: objectVisibility,
+                    familyFilter: familyFilter,
                     showNashville: showNashville,
                     showHarmonicColor: showHarmonicColor,
                     harmonicKeyRoot: harmonicKeyRoot
@@ -114,6 +118,7 @@ enum ScoreExporter {
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
         objectVisibility: Double,
+        familyFilter: InstrumentFamily?,
         showNashville: Bool,
         showHarmonicColor: Bool,
         harmonicKeyRoot: Int,
@@ -124,6 +129,7 @@ enum ScoreExporter {
             pixelsPerSecond: max(pixelsPerSecond, 24),
             spectrogram: spectrogram,
             objectVisibility: objectVisibility,
+            familyFilter: familyFilter,
             showNashville: showNashville,
             showHarmonicColor: showHarmonicColor,
             harmonicKeyRoot: harmonicKeyRoot,
@@ -139,6 +145,7 @@ enum ScoreExporter {
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
         objectVisibility: Double,
+        familyFilter: InstrumentFamily?,
         showNashville: Bool,
         showHarmonicColor: Bool,
         harmonicKeyRoot: Int,
@@ -150,6 +157,7 @@ enum ScoreExporter {
                 pixelsPerSecond: pixelsPerSecond,
                 spectrogram: spectrogram,
                 objectVisibility: objectVisibility,
+                familyFilter: familyFilter,
                 showNashville: showNashville,
                 showHarmonicColor: showHarmonicColor,
                 harmonicKeyRoot: harmonicKeyRoot,
@@ -172,6 +180,7 @@ enum ScoreExporter {
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
         objectVisibility: Double,
+        familyFilter: InstrumentFamily?,
         showNashville: Bool,
         showHarmonicColor: Bool,
         harmonicKeyRoot: Int,
@@ -183,6 +192,7 @@ enum ScoreExporter {
                 pixelsPerSecond: pixelsPerSecond,
                 spectrogram: spectrogram,
                 objectVisibility: objectVisibility,
+                familyFilter: familyFilter,
                 showNashville: showNashville,
                 showHarmonicColor: showHarmonicColor,
                 harmonicKeyRoot: harmonicKeyRoot,
@@ -212,6 +222,7 @@ enum ScoreExporter {
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
         objectVisibility: Double,
+        familyFilter: InstrumentFamily?,
         showNashville: Bool,
         showHarmonicColor: Bool,
         harmonicKeyRoot: Int
@@ -221,6 +232,7 @@ enum ScoreExporter {
             pixelsPerSecond: max(pixelsPerSecond, 24),
             spectrogram: spectrogram,
             objectVisibility: objectVisibility,
+            familyFilter: familyFilter,
             showNashville: showNashville,
             showHarmonicColor: showHarmonicColor,
             harmonicKeyRoot: harmonicKeyRoot
@@ -246,6 +258,7 @@ enum ScoreSVGBuilder {
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
         objectVisibility: Double,
+        familyFilter: InstrumentFamily? = nil,
         showNashville: Bool = false,
         showHarmonicColor: Bool = false,
         harmonicKeyRoot: Int = 0
@@ -267,6 +280,7 @@ enum ScoreSVGBuilder {
         }
 
         let visible = score.objects.filter { obj in
+            if let familyFilter, obj.family != familyFilter { return false }
             if objectVisibility <= 0.001 { return false }
             if objectVisibility >= 0.999 { return true }
             return obj.rmsEnergy + 1e-6 >= (1.0 - objectVisibility)
@@ -368,37 +382,46 @@ enum ScoreSVGBuilder {
                 if showHarmonicColor, obj.pitchClass >= 0 {
                     return HarmonicColoring.hex(pitchClass: obj.pitchClass, keyRoot: harmonicKeyRoot)
                 }
-                return "#111111"
+                return obj.family.colorHex
             }()
             out.append("<g transform=\"translate(\(fmt(px)),\(fmt(py)))\">")
+            // Family badge
             out.append(
-                "<text x=\"0\" y=\"14\" font-family=\"Menlo, monospace\" font-size=\"11\" " +
+                "<rect x=\"0\" y=\"4\" width=\"12\" height=\"12\" rx=\"6\" fill=\"\(obj.family.colorHex)\"/>"
+            )
+            out.append(
+                "<text x=\"6\" y=\"13\" text-anchor=\"middle\" " +
+                "font-family=\"Helvetica, Arial, sans-serif\" font-size=\"8\" font-weight=\"700\" fill=\"#fff\">" +
+                "\(esc(obj.family.shortSV))</text>"
+            )
+            out.append(
+                "<text x=\"16\" y=\"14\" font-family=\"Menlo, monospace\" font-size=\"11\" " +
                 "font-weight=\"700\" fill=\"\(ink)\">\(esc(obj.label))</text>"
             )
+            let glyphX: CGFloat
             if showNashville, !obj.nashville.isEmpty {
                 out.append(
-                    "<text x=\"14\" y=\"14\" font-family=\"Helvetica, Arial, sans-serif\" font-size=\"10\" " +
+                    "<text x=\"30\" y=\"14\" font-family=\"Helvetica, Arial, sans-serif\" font-size=\"10\" " +
                     "font-weight=\"600\" fill=\"\(ink)\">\(esc(obj.nashville))</text>"
                 )
-                out.append(contentsOf: symbolSVG(kind: obj.symbol, filled: obj.filled, x: 28, y: 2, color: ink))
+                glyphX = 44
             } else {
-                out.append(contentsOf: symbolSVG(kind: obj.symbol, filled: obj.filled, x: 16, y: 2, color: ink))
+                glyphX = 30
             }
-            if w > 40 {
+            out.append(contentsOf: symbolSVG(kind: obj.symbol, filled: obj.filled, x: glyphX, y: 2, color: ink))
+            if w > 48 {
                 let lineY: CGFloat = 14
-                let x0: CGFloat = 40
+                let x0: CGFloat = glyphX + 20
                 let x1 = w - 2
-                if obj.filled {
-                    out.append(
-                        "<line x1=\"\(fmt(x0))\" y1=\"\(fmt(lineY))\" x2=\"\(fmt(x1))\" y2=\"\(fmt(lineY))\" " +
-                        "stroke=\"#111\" stroke-width=\"1.5\"/>"
-                    )
-                } else {
-                    out.append(
-                        "<line x1=\"\(fmt(x0))\" y1=\"\(fmt(lineY))\" x2=\"\(fmt(x1))\" y2=\"\(fmt(lineY))\" " +
-                        "stroke=\"#111\" stroke-width=\"1\" stroke-dasharray=\"3 2\"/>"
-                    )
-                }
+                let dash = obj.filled
+                    ? (obj.family.durationDash.isEmpty
+                        ? ""
+                        : " stroke-dasharray=\"\(obj.family.durationDash.map { fmt($0) }.joined(separator: " "))\"")
+                    : " stroke-dasharray=\"3 2\""
+                out.append(
+                    "<line x1=\"\(fmt(x0))\" y1=\"\(fmt(lineY))\" x2=\"\(fmt(x1))\" y2=\"\(fmt(lineY))\" " +
+                    "stroke=\"\(ink)\" stroke-width=\"\(obj.filled ? "1.5" : "1")\"\(dash)/>"
+                )
             }
             out.append("</g>")
         }

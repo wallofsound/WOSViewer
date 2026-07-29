@@ -98,7 +98,8 @@ struct AudioAnalyzer {
                 centroid: centroid,
                 zcr: zcr,
                 novelty: novelty,
-                mfcc1: mfcc1
+                mfcc1: mfcc1,
+                harmonicity: pitch.harmonicity
             )
             built = ScoreBuilder.applyNashville(built, pitch: pitch, times: times)
             score = built
