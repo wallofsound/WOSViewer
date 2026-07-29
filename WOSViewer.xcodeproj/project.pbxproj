@@ -10,6 +10,7 @@
 		08977185B752342BB63A2135 /* AudioAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7468044CBA915323948D96A1 /* AudioAnalyzer.swift */; };
 		0AC0FAE78D0392FB51C1877D /* ScoreCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C793D2994B939619B3670F4 /* ScoreCanvasView.swift */; };
 		14DA2583EAA18AADC75FB0B4 /* ScoreAudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E8B92B91EE4A5BFA11B9BA7 /* ScoreAudioPlayer.swift */; };
+		1545F43CD50E7073F97006E0 /* ScoreExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 349B321E771B6130238A5383 /* ScoreExport.swift */; };
 		2CA4A3ADEAFCF1C88A1B4804 /* ScoreModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89275C593D2365CF1D5D8204 /* ScoreModels.swift */; };
 		3710D191F73EEC1A82F047D9 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B63AFDADE04A6DC48812F6D7 /* Assets.xcassets */; };
 		879D3530FCB2DA9DD558DEEC /* ScoreBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AF500E01A6AD2B02F45EFD6 /* ScoreBuilder.swift */; };
@@ -21,6 +22,7 @@
 /* Begin PBXFileReference section */
 		01812D672C049831455BE0BB /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		1AF500E01A6AD2B02F45EFD6 /* ScoreBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreBuilder.swift; sourceTree = "<group>"; };
+		349B321E771B6130238A5383 /* ScoreExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreExport.swift; sourceTree = "<group>"; };
 		49556E871C1D52B1EA43E701 /* WOSViewer.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WOSViewer.entitlements; sourceTree = "<group>"; };
 		4E72C55D2F192ED2783DA149 /* WOSViewer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WOSViewer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5E8B92B91EE4A5BFA11B9BA7 /* ScoreAudioPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreAudioPlayer.swift; sourceTree = "<group>"; };
@@ -45,6 +47,7 @@
 				5E8B92B91EE4A5BFA11B9BA7 /* ScoreAudioPlayer.swift */,
 				1AF500E01A6AD2B02F45EFD6 /* ScoreBuilder.swift */,
 				6C793D2994B939619B3670F4 /* ScoreCanvasView.swift */,
+				349B321E771B6130238A5383 /* ScoreExport.swift */,
 				89275C593D2365CF1D5D8204 /* ScoreModels.swift */,
 				49556E871C1D52B1EA43E701 /* WOSViewer.entitlements */,
 				F0FBD7D89302BAA888A86F4A /* WOSViewerApp.swift */,
@@ -141,6 +144,7 @@
 				14DA2583EAA18AADC75FB0B4 /* ScoreAudioPlayer.swift in Sources */,
 				879D3530FCB2DA9DD558DEEC /* ScoreBuilder.swift in Sources */,
 				0AC0FAE78D0392FB51C1877D /* ScoreCanvasView.swift in Sources */,
+				1545F43CD50E7073F97006E0 /* ScoreExport.swift in Sources */,
 				2CA4A3ADEAFCF1C88A1B4804 /* ScoreModels.swift in Sources */,
 				F4D98AFAF0E0339DA35F6B5F /* WOSViewerApp.swift in Sources */,
 			);

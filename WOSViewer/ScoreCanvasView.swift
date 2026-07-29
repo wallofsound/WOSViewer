@@ -363,8 +363,12 @@ struct ScoreEditorView: View {
                         .keyboardShortcut("s", modifiers: .command)
                 }
 
-                Button("PNG…") { exportScorePNG() }
-                    .help("Exporterar score i Viewer-stil (utan editrutor).")
+                Menu("Exportera") {
+                    ForEach(ScoreExportFormat.allCases) { format in
+                        Button(format.label) { exportScore(format) }
+                    }
+                }
+                .help("Exporterar score i Viewer-stil: PNG, PDF eller SVG.")
             }
         }
         .padding(.horizontal, 12)
@@ -401,37 +405,15 @@ struct ScoreEditorView: View {
     }
 
     @MainActor
-    private func exportScorePNG() {
-        let exportView = ScoreExportView(
+    private func exportScore(_ format: ScoreExportFormat) {
+        ScoreExporter.presentSave(
             score: score,
-            pixelsPerSecond: max(pixelsPerSecond, 24),
+            format: format,
+            pixelsPerSecond: pixelsPerSecond,
             spectrogram: showSpectrogram ? spectrogram : nil,
-            objectVisibility: objectVisibility
+            objectVisibility: objectVisibility,
+            onStatus: onStatus
         )
-            .padding(16)
-            .background(Color.white)
-
-        let renderer = ImageRenderer(content: exportView)
-        renderer.scale = 2
-
-        guard let nsImage = renderer.nsImage,
-              let tiff = nsImage.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiff),
-              let png = bitmap.representation(using: .png, properties: [:]) else {
-            onStatus?("Kunde inte skapa PNG.")
-            return
-        }
-
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.png]
-        panel.nameFieldStringValue = score.sourceName + "_Score.png"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            try png.write(to: url)
-            onStatus?("Score-PNG sparad: \(url.lastPathComponent)")
-        } catch {
-            onStatus?("PNG-export misslyckades.")
-        }
     }
 }
 
@@ -557,7 +539,7 @@ struct ScorePaletteView: View {
                         .font(.caption)
                 }
 
-                Text("Edit = rutor/handtag. Viewer = rent partitur. PNG = alltid Viewer. ⌫ lämnar tidshål.")
+                Text("Edit = rutor/handtag. Viewer = rent partitur. Exportera = PNG/PDF/SVG i Viewer-stil. ⌫ lämnar tidshål.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

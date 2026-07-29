@@ -12,7 +12,7 @@
 | **3b** | Spektrogram-underlag (toggle) under objektplanen | Klar |
 | **3c** | Playhead-scrub (dra linje / linjal → startposition) | Klar |
 | **3d** | Objektsiktbarhet via energi (RMS-filter) | Klar |
-| **4** | SVG/PDF-export (+ ev. ännu bättre clustering) | Senare |
+| **4** | SVG/PDF-export (+ PNG via meny) | Klar |
 | **5** | Pitch/harmonicitet → Nashville (tonal musik) | Senare |
 | **6** | MusicEyes-läge (separat) | Senare |
 
@@ -41,6 +41,13 @@
 - Y: låg frekvens nederst / hög överst (samma riktning som lanes)
 - Finns vid ljudanalys; saknas för CSV-import
 - PNG-export inkluderar underlaget om togglen är på
+
+## Skiva 4 — SVG / PDF
+
+- Meny **Exportera** → PNG · PDF · SVG (Viewer-stil)
+- PDF/PNG via ImageRenderer (samma utseende som på skärmen)
+- SVG som vektor från score-modellen (fält, objekt, former, fraser; spektrogram inbäddat som PNG om aktivt)
+- Respekterar objektfilter och spektrogram-toggle
 
 Princip: en **testbar redigeringsloop** per skiva. Inte allt på en gång.
 
