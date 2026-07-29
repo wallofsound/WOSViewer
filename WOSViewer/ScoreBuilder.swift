@@ -180,8 +180,8 @@ enum ScoreBuilder {
         times: [Double]
     ) -> ScoreDocument {
         guard !pitch.f0Hz.isEmpty, pitch.f0Hz.count == times.count else { return doc }
-        // Kräv viss tonartskonfidens — annars lämna tomt (EA / atonalt).
-        guard pitch.keyConfidence >= 0.42 else {
+        // Samma tröskel som tonartsvisning i UI (~0.35).
+        guard pitch.keyConfidence >= 0.35 else {
             var cleared = doc
             for i in cleared.objects.indices {
                 cleared.objects[i].nashville = ""
@@ -193,13 +193,6 @@ enum ScoreBuilder {
         var out = doc
         for i in out.objects.indices {
             let obj = out.objects[i]
-            // Nashville mest meningsfullt för tonala objekt
-            let tonal = obj.symbol.mass == .pitched || obj.symbol == .variable
-            guard tonal else {
-                out.objects[i].nashville = ""
-                out.objects[i].pitchClass = -1
-                continue
-            }
             if let pc = PitchHarmony.medianVoicedPitchClass(
                 f0: pitch.f0Hz,
                 times: times,

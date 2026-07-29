@@ -54,8 +54,10 @@
 
 - Features: **Pitch F₀** + **Harmonicitet** (autocorrelation)
 - Chroma → Krumhansl tonartsestimat (visas i score-raden vid tillräcklig konfidens)
-- Nashville-siffror på tonala objekt (toggle **Nashville**)
+- Nashville-siffror på objekt med detekterad F₀ (toggle **Nashville**) — orange badge i score
 - Sparas i `.wosscore.json` / CSV (`Pitch_F0`, `Harmonicity`)
+- Låg tonartskonfidens / ingen F₀ i objektfönstret → ingen siffra på det objektet
+- Verktygsrad visar `N12` = antal objekt med siffra
 - EA / låg konfidens → inga Nashville-etiketter
 
 ## Skiva 5b — Harmonic Coloring + Pitch Bars
