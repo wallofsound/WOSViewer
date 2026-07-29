@@ -41,11 +41,22 @@ struct ScoreEditorView: View {
     @State private var presentation: ScorePresentationMode = .edit
     @State private var showSpectrogram = true
     @State private var showNashville = true
+    @State private var showHarmonicColor = true
+    @State private var showPitchBars = true
     @State private var didEnrichEnergies = false
     @StateObject private var player = ScoreAudioPlayer()
     @FocusState private var canvasFocused: Bool
 
     private var isEditing: Bool { presentation == .edit }
+
+    private var pitchBarsData: PitchBarsData? {
+        guard let pitch,
+              let f0 = featureSeries?.first(where: { $0.kind == .pitchF0 }) else { return nil }
+        return PitchBarsData.from(pitch: pitch, times: f0.points.map(\.time))
+    }
+
+    private var keyRootForColor: Int { pitch?.keyRoot ?? 0 }
+
 
     private var visibleObjects: [ScoreObject] {
         score.objects.filter { Self.isObjectVisible($0, visibility: objectVisibility) }
@@ -144,6 +155,9 @@ struct ScoreEditorView: View {
                         spectrogram: spectrogram,
                         showSpectrogram: showSpectrogram,
                         showNashville: showNashville,
+                        showHarmonicColor: showHarmonicColor,
+                        harmonicKeyRoot: keyRootForColor,
+                        pitchBars: showPitchBars ? pitchBarsData : nil,
                         playheadTime: player.hasAudio ? player.currentTime : nil,
                         onSeek: { t in
                             player.seek(to: t, duration: score.duration)
@@ -376,6 +390,18 @@ struct ScoreEditorView: View {
                           : "Visa Nashville-siffror på tonala objekt (relativt uppskattad tonart).")
                     .disabled(pitch == nil)
 
+                Toggle("Harm. färg", isOn: $showHarmonicColor)
+                    .toggleStyle(.checkbox)
+                    .fixedSize()
+                    .help("Malinowski harmonic coloring: blått = tonika, mot rött = dominantriktning (kvintcirkel).")
+                    .disabled(pitch == nil)
+
+                Toggle("Pitch bars", isOn: $showPitchBars)
+                    .toggleStyle(.checkbox)
+                    .fixedSize()
+                    .help("F₀ som piano-roll under objektplanen, färgat med harmonic coloring.")
+                    .disabled(pitchBarsData == nil)
+
                 Spacer(minLength: 8)
 
                 if isEditing {
@@ -442,6 +468,9 @@ struct ScoreEditorView: View {
             spectrogram: showSpectrogram ? spectrogram : nil,
             objectVisibility: objectVisibility,
             showNashville: showNashville,
+            showHarmonicColor: showHarmonicColor,
+            harmonicKeyRoot: keyRootForColor,
+            pitchBars: showPitchBars ? pitchBarsData : nil,
             onStatus: onStatus
         )
     }
@@ -455,6 +484,9 @@ struct ScoreExportView: View {
     var spectrogram: SpectrogramData? = nil
     var objectVisibility: Double = 1
     var showNashville: Bool = false
+    var showHarmonicColor: Bool = false
+    var harmonicKeyRoot: Int = 0
+    var pitchBars: PitchBarsData? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -473,6 +505,9 @@ struct ScoreExportView: View {
                 spectrogram: spectrogram,
                 showSpectrogram: spectrogram != nil,
                 showNashville: showNashville,
+                showHarmonicColor: showHarmonicColor,
+                harmonicKeyRoot: harmonicKeyRoot,
+                pitchBars: pitchBars,
                 playheadTime: nil,
                 onSeek: nil,
                 onChangeObject: { _ in },
@@ -745,6 +780,9 @@ struct ScoreCanvasView: View {
     var spectrogram: SpectrogramData? = nil
     var showSpectrogram: Bool = false
     var showNashville: Bool = false
+    var showHarmonicColor: Bool = false
+    var harmonicKeyRoot: Int = 0
+    var pitchBars: PitchBarsData? = nil
     var playheadTime: Double?
     var onSeek: ((Double) -> Void)? = nil
     var onChangeObject: (ScoreObject) -> Void
@@ -761,8 +799,11 @@ struct ScoreCanvasView: View {
     private let envelopeHeight: CGFloat = 70
     private let rulerHeight: CGFloat = 24
     private let bracketHeight: CGFloat = 28
+    private let pitchBarsHeight: CGFloat = 72
 
     private var isEditing: Bool { presentation == .edit }
+
+    private var activePitchBarsHeight: CGFloat { pitchBars == nil ? 0 : pitchBarsHeight }
 
     private var visibleObjects: [ScoreObject] {
         score.objects.filter { obj in
@@ -780,8 +821,12 @@ struct ScoreCanvasView: View {
 
     private var objectTop: CGFloat { rulerHeight + fieldStripHeight }
 
+    private var pitchBarsTop: CGFloat { objectTop + objectAreaHeight }
+
+    private var envelopeTop: CGFloat { pitchBarsTop + activePitchBarsHeight }
+
     private var totalHeight: CGFloat {
-        rulerHeight + fieldStripHeight + objectAreaHeight + envelopeHeight + bracketHeight + 16
+        rulerHeight + fieldStripHeight + objectAreaHeight + activePitchBarsHeight + envelopeHeight + bracketHeight + 16
     }
 
     private var spectrogramWidth: CGFloat {
@@ -858,6 +903,10 @@ struct ScoreCanvasView: View {
                     scoreDuration: score.duration,
                     presentation: presentation,
                     showNashville: showNashville,
+                    harmonicColor: {
+                        guard showHarmonicColor, obj.pitchClass >= 0 else { return nil }
+                        return HarmonicColoring.color(pitchClass: obj.pitchClass, keyRoot: harmonicKeyRoot)
+                    }(),
                     onSelect: {
                         guard isEditing else { return }
                         selection = .object(obj.id)
@@ -872,13 +921,24 @@ struct ScoreCanvasView: View {
                 )
             }
 
+            if let pitchBars {
+                PitchBarsCanvasView(
+                    data: pitchBars,
+                    pixelsPerSecond: pixelsPerSecond,
+                    width: canvasWidth
+                )
+                .frame(width: canvasWidth, height: pitchBarsHeight)
+                .offset(y: pitchBarsTop)
+                .allowsHitTesting(false)
+            }
+
             ForEach(score.dynamicForms) { form in
                 DynamicFormCanvasItem(
                     form: form,
                     selected: isEditing && selection == .dynamicForm(form.id),
                     pixelsPerSecond: pixelsPerSecond,
                     envelopeHeight: envelopeHeight,
-                    envelopeY: objectTop + objectAreaHeight,
+                    envelopeY: envelopeTop,
                     scoreDuration: score.duration,
                     presentation: presentation,
                     onSelect: {
@@ -897,7 +957,7 @@ struct ScoreCanvasView: View {
 
             ForEach(score.brackets) { bracket in
                 bracketView(bracket)
-                    .offset(y: objectTop + objectAreaHeight + envelopeHeight)
+                    .offset(y: envelopeTop + envelopeHeight)
                     .allowsHitTesting(false)
             }
 
@@ -905,7 +965,7 @@ struct ScoreCanvasView: View {
                 PlayheadView(
                     time: t,
                     pixelsPerSecond: pixelsPerSecond,
-                    height: fieldStripHeight + objectAreaHeight + envelopeHeight,
+                    height: fieldStripHeight + objectAreaHeight + activePitchBarsHeight + envelopeHeight,
                     scoreDuration: score.duration,
                     enabled: onSeek != nil,
                     onSeek: { newTime in onSeek?(newTime) },
@@ -1093,6 +1153,66 @@ private struct PlayheadView: View {
         )
         .help(enabled ? "Dra playhead eller linjalen för startposition. Play fortsätter härifrån. Stop återställer till 0." : "")
         .allowsHitTesting(enabled)
+    }
+}
+
+// MARK: - Pitch bars (F₀ piano-roll)
+
+private struct PitchBarsCanvasView: View {
+    let data: PitchBarsData
+    var pixelsPerSecond: CGFloat
+    var width: CGFloat
+    var minMIDI: Double = 36
+    var maxMIDI: Double = 84
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Rectangle()
+                .fill(Color(white: 0.97))
+            // Soft staff lines (octaves)
+            ForEach([48.0, 60.0, 72.0], id: \.self) { midi in
+                let y = yPos(midi: midi)
+                Path { p in
+                    p.move(to: CGPoint(x: 0, y: y))
+                    p.addLine(to: CGPoint(x: width, y: y))
+                }
+                .stroke(Color.gray.opacity(0.2), lineWidth: 0.5)
+            }
+            Canvas { context, size in
+                let n = data.times.count
+                guard n > 1 else { return }
+                let step = max(1, n / 1_000)
+                let hop = max(0.01, (data.times.last! - data.times.first!) / Double(max(n - 1, 1)))
+                let barW = max(1.2, CGFloat(hop * Double(step)) * pixelsPerSecond)
+                for i in stride(from: 0, to: n, by: step) {
+                    let hz = data.f0Hz[i]
+                    guard hz > 55 else { continue }
+                    let midi = 69.0 + 12.0 * log2(hz / 440.0)
+                    guard midi >= minMIDI, midi <= maxMIDI else { continue }
+                    let x = CGFloat(data.times[i]) * pixelsPerSecond + 8
+                    let y = yPos(midi: midi)
+                    let harm = data.harmonicity.indices.contains(i) ? data.harmonicity[i] : 0.5
+                    let color = HarmonicColoring.color(
+                        fromHz: hz,
+                        keyRoot: data.keyRoot,
+                        harmonicity: harm
+                    ) ?? Color.gray.opacity(0.4)
+                    let rect = CGRect(x: x, y: y - 1.6, width: barW, height: 3.2)
+                    context.fill(Path(roundedRect: rect, cornerRadius: 1), with: .color(color.opacity(0.9)))
+                }
+            }
+            Text("Pitch bars (F₀)")
+                .font(.system(size: 8))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 10)
+                .padding(.top, 2)
+        }
+    }
+
+    private func yPos(midi: Double) -> CGFloat {
+        let h: CGFloat = 72
+        let norm = (midi - minMIDI) / (maxMIDI - minMIDI)
+        return h - CGFloat(norm) * (h - 6) - 3
     }
 }
 
@@ -1360,6 +1480,7 @@ private struct ScoreObjectCanvasItem: View {
     var scoreDuration: Double
     var presentation: ScorePresentationMode
     var showNashville: Bool = false
+    var harmonicColor: Color? = nil
     var onSelect: () -> Void
     var onChange: (ScoreObject) -> Void
     var onInteractingChanged: (Bool) -> Void
@@ -1398,17 +1519,17 @@ private struct ScoreObjectCanvasItem: View {
             if showNashville, !live.nashville.isEmpty {
                 Text(live.nashville)
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.orange.opacity(0.9))
+                    .foregroundStyle(harmonicColor ?? Color.orange.opacity(0.9))
             }
-            ScoreSymbolGlyph(kind: live.symbol, filled: live.filled, size: 16)
+            ScoreSymbolGlyph(kind: live.symbol, filled: live.filled, size: 16, color: harmonicColor ?? .primary)
             if width > 40 {
                 Rectangle()
-                    .fill(live.filled ? Color.primary : Color.clear)
+                    .fill(live.filled ? (harmonicColor ?? Color.primary) : Color.clear)
                     .frame(height: live.filled ? 1.5 : 1)
                     .overlay(
                         Rectangle()
                             .stroke(style: StrokeStyle(lineWidth: 1, dash: live.filled ? [] : [3, 2]))
-                            .foregroundStyle(Color.primary)
+                            .foregroundStyle(harmonicColor ?? Color.primary)
                     )
             }
         }
@@ -1427,9 +1548,9 @@ private struct ScoreObjectCanvasItem: View {
                 if showNashville, !live.nashville.isEmpty {
                     Text(live.nashville)
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.orange.opacity(0.95))
+                        .foregroundStyle(harmonicColor ?? Color.orange.opacity(0.95))
                 }
-                ScoreSymbolGlyph(kind: live.symbol, filled: live.filled, size: 16)
+                ScoreSymbolGlyph(kind: live.symbol, filled: live.filled, size: 16, color: harmonicColor ?? .primary)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 4)
@@ -1505,11 +1626,11 @@ struct ScoreSymbolGlyph: View {
     let kind: ScoreSymbolKind
     let filled: Bool
     var size: CGFloat = 16
+    var color: Color = .primary
 
     var body: some View {
         Canvas { context, canvasSize in
             let rect = CGRect(x: 2, y: 2, width: canvasSize.width - 4, height: canvasSize.height - 4)
-            let color = Color.primary
             switch kind {
             case .pitchedImpulse:
                 let path = Path(ellipseIn: rect.insetBy(dx: 2, dy: 2))

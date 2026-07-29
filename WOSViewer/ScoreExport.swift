@@ -48,6 +48,9 @@ enum ScoreExporter {
         spectrogram: SpectrogramData?,
         objectVisibility: Double,
         showNashville: Bool = false,
+        showHarmonicColor: Bool = false,
+        harmonicKeyRoot: Int = 0,
+        pitchBars: PitchBarsData? = nil,
         onStatus: ((String) -> Void)?
     ) {
         let panel = NSSavePanel()
@@ -69,7 +72,10 @@ enum ScoreExporter {
                     pixelsPerSecond: pixelsPerSecond,
                     spectrogram: spectrogram,
                     objectVisibility: objectVisibility,
-                    showNashville: showNashville
+                    showNashville: showNashville,
+                    showHarmonicColor: showHarmonicColor,
+                    harmonicKeyRoot: harmonicKeyRoot,
+                    pitchBars: pitchBars
                 )
             case .pdf:
                 try writePDF(
@@ -78,7 +84,10 @@ enum ScoreExporter {
                     pixelsPerSecond: pixelsPerSecond,
                     spectrogram: spectrogram,
                     objectVisibility: objectVisibility,
-                    showNashville: showNashville
+                    showNashville: showNashville,
+                    showHarmonicColor: showHarmonicColor,
+                    harmonicKeyRoot: harmonicKeyRoot,
+                    pitchBars: pitchBars
                 )
             case .svg:
                 try writeSVG(
@@ -87,7 +96,9 @@ enum ScoreExporter {
                     pixelsPerSecond: pixelsPerSecond,
                     spectrogram: spectrogram,
                     objectVisibility: objectVisibility,
-                    showNashville: showNashville
+                    showNashville: showNashville,
+                    showHarmonicColor: showHarmonicColor,
+                    harmonicKeyRoot: harmonicKeyRoot
                 )
             }
             onStatus?("Score-\(format.rawValue.uppercased()) sparad: \(url.lastPathComponent)")
@@ -103,14 +114,20 @@ enum ScoreExporter {
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
         objectVisibility: Double,
-        showNashville: Bool
+        showNashville: Bool,
+        showHarmonicColor: Bool,
+        harmonicKeyRoot: Int,
+        pitchBars: PitchBarsData?
     ) -> some View {
         ScoreExportView(
             score: score,
             pixelsPerSecond: max(pixelsPerSecond, 24),
             spectrogram: spectrogram,
             objectVisibility: objectVisibility,
-            showNashville: showNashville
+            showNashville: showNashville,
+            showHarmonicColor: showHarmonicColor,
+            harmonicKeyRoot: harmonicKeyRoot,
+            pitchBars: pitchBars
         )
         .padding(16)
         .background(Color.white)
@@ -122,7 +139,10 @@ enum ScoreExporter {
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
         objectVisibility: Double,
-        showNashville: Bool
+        showNashville: Bool,
+        showHarmonicColor: Bool,
+        harmonicKeyRoot: Int,
+        pitchBars: PitchBarsData?
     ) throws {
         let renderer = ImageRenderer(
             content: exportView(
@@ -130,7 +150,10 @@ enum ScoreExporter {
                 pixelsPerSecond: pixelsPerSecond,
                 spectrogram: spectrogram,
                 objectVisibility: objectVisibility,
-                showNashville: showNashville
+                showNashville: showNashville,
+                showHarmonicColor: showHarmonicColor,
+                harmonicKeyRoot: harmonicKeyRoot,
+                pitchBars: pitchBars
             )
         )
         renderer.scale = 2
@@ -149,7 +172,10 @@ enum ScoreExporter {
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
         objectVisibility: Double,
-        showNashville: Bool
+        showNashville: Bool,
+        showHarmonicColor: Bool,
+        harmonicKeyRoot: Int,
+        pitchBars: PitchBarsData?
     ) throws {
         let renderer = ImageRenderer(
             content: exportView(
@@ -157,7 +183,10 @@ enum ScoreExporter {
                 pixelsPerSecond: pixelsPerSecond,
                 spectrogram: spectrogram,
                 objectVisibility: objectVisibility,
-                showNashville: showNashville
+                showNashville: showNashville,
+                showHarmonicColor: showHarmonicColor,
+                harmonicKeyRoot: harmonicKeyRoot,
+                pitchBars: pitchBars
             )
         )
         renderer.scale = 2
@@ -183,14 +212,18 @@ enum ScoreExporter {
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
         objectVisibility: Double,
-        showNashville: Bool
+        showNashville: Bool,
+        showHarmonicColor: Bool,
+        harmonicKeyRoot: Int
     ) throws {
         let svg = ScoreSVGBuilder.build(
             score: score,
             pixelsPerSecond: max(pixelsPerSecond, 24),
             spectrogram: spectrogram,
             objectVisibility: objectVisibility,
-            showNashville: showNashville
+            showNashville: showNashville,
+            showHarmonicColor: showHarmonicColor,
+            harmonicKeyRoot: harmonicKeyRoot
         )
         guard let data = svg.data(using: .utf8) else { throw ScoreExportError.renderFailed }
         try data.write(to: url, options: .atomic)
@@ -213,7 +246,9 @@ enum ScoreSVGBuilder {
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
         objectVisibility: Double,
-        showNashville: Bool = false
+        showNashville: Bool = false,
+        showHarmonicColor: Bool = false,
+        harmonicKeyRoot: Int = 0
     ) -> String {
         let canvasW = max(CGFloat(score.duration) * pixelsPerSecond + 80, 600)
         let objectH = CGFloat(laneCount) * laneHeight
@@ -329,19 +364,25 @@ enum ScoreSVGBuilder {
             let w = max(24, CGFloat(obj.end - obj.start) * pixelsPerSecond)
             let px = ox + x(obj.start)
             let py = oy + objectTop + CGFloat(obj.lane) * laneHeight + 8
+            let ink: String = {
+                if showHarmonicColor, obj.pitchClass >= 0 {
+                    return HarmonicColoring.hex(pitchClass: obj.pitchClass, keyRoot: harmonicKeyRoot)
+                }
+                return "#111111"
+            }()
             out.append("<g transform=\"translate(\(fmt(px)),\(fmt(py)))\">")
             out.append(
                 "<text x=\"0\" y=\"14\" font-family=\"Menlo, monospace\" font-size=\"11\" " +
-                "font-weight=\"700\" fill=\"#111\">\(esc(obj.label))</text>"
+                "font-weight=\"700\" fill=\"\(ink)\">\(esc(obj.label))</text>"
             )
             if showNashville, !obj.nashville.isEmpty {
                 out.append(
                     "<text x=\"14\" y=\"14\" font-family=\"Helvetica, Arial, sans-serif\" font-size=\"10\" " +
-                    "font-weight=\"600\" fill=\"#c45c12\">\(esc(obj.nashville))</text>"
+                    "font-weight=\"600\" fill=\"\(ink)\">\(esc(obj.nashville))</text>"
                 )
-                out.append(contentsOf: symbolSVG(kind: obj.symbol, filled: obj.filled, x: 28, y: 2))
+                out.append(contentsOf: symbolSVG(kind: obj.symbol, filled: obj.filled, x: 28, y: 2, color: ink))
             } else {
-                out.append(contentsOf: symbolSVG(kind: obj.symbol, filled: obj.filled, x: 16, y: 2))
+                out.append(contentsOf: symbolSVG(kind: obj.symbol, filled: obj.filled, x: 16, y: 2, color: ink))
             }
             if w > 40 {
                 let lineY: CGFloat = 14
@@ -414,11 +455,11 @@ enum ScoreSVGBuilder {
         }
     }
 
-    private static func symbolSVG(kind: ScoreSymbolKind, filled: Bool, x: CGFloat, y: CGFloat) -> [String] {
+    private static func symbolSVG(kind: ScoreSymbolKind, filled: Bool, x: CGFloat, y: CGFloat, color: String = "#111") -> [String] {
         let s: CGFloat = 16
         var lines: [String] = []
-        let fill = filled ? "#111" : "none"
-        let stroke = "#111"
+        let fill = filled ? color : "none"
+        let stroke = color
         switch kind {
         case .pitchedImpulse:
             lines.append(
@@ -454,14 +495,14 @@ enum ScoreSVGBuilder {
                 let cy = y + s / 2
                 lines.append(
                     "<polygon points=\"\(fmt(cx)),\(fmt(cy - 3)) \(fmt(cx + 3)),\(fmt(cy)) " +
-                    "\(fmt(cx)),\(fmt(cy + 3)) \(fmt(cx - 3)),\(fmt(cy))\" fill=\"#111\"/>"
+                    "\(fmt(cx)),\(fmt(cy + 3)) \(fmt(cx - 3)),\(fmt(cy))\" fill=\"\(color)\"/>"
                 )
             }
         case .accumulation:
             for i in 0..<5 {
                 let cx = x + 3 + CGFloat(i % 3) * 5
                 let cy = y + 4 + CGFloat(i / 3) * 6
-                lines.append("<circle cx=\"\(fmt(cx))\" cy=\"\(fmt(cy))\" r=\"1.5\" fill=\"#111\"/>")
+                lines.append("<circle cx=\"\(fmt(cx))\" cy=\"\(fmt(cy))\" r=\"1.5\" fill=\"\(color)\"/>")
             }
         case .variable:
             let midx = x + s / 2
@@ -469,14 +510,14 @@ enum ScoreSVGBuilder {
             lines.append(
                 "<polygon points=\"\(fmt(x + 2)),\(fmt(midy)) \(fmt(midx)),\(fmt(y + 2)) " +
                 "\(fmt(x + s - 2)),\(fmt(midy)) \(fmt(midx)),\(fmt(y + s - 2))\" " +
-                "fill=\"none\" stroke=\"#111\" stroke-width=\"1.5\"/>"
+                "fill=\"none\" stroke=\"\(stroke)\" stroke-width=\"1.5\"/>"
             )
         case .stratified:
             for i in 0..<3 {
                 let ly = y + 4 + CGFloat(i) * 5
                 lines.append(
                     "<line x1=\"\(fmt(x))\" y1=\"\(fmt(ly))\" x2=\"\(fmt(x + s))\" y2=\"\(fmt(ly))\" " +
-                    "stroke=\"#111\" stroke-width=\"1.2\"/>"
+                    "stroke=\"\(stroke)\" stroke-width=\"1.2\"/>"
                 )
             }
         }

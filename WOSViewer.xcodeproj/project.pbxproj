@@ -16,6 +16,7 @@
 		879D3530FCB2DA9DD558DEEC /* ScoreBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AF500E01A6AD2B02F45EFD6 /* ScoreBuilder.swift */; };
 		8E0890A7378755B90AEA0291 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01812D672C049831455BE0BB /* Models.swift */; };
 		C480AB2FCE3086359DD68D57 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98420FB07A374FBE55521BFF /* ContentView.swift */; };
+		D94229341BD39B9FE3FA4B6C /* HarmonicColoring.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7483166585F6C78D6480E15 /* HarmonicColoring.swift */; };
 		F4D98AFAF0E0339DA35F6B5F /* WOSViewerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0FBD7D89302BAA888A86F4A /* WOSViewerApp.swift */; };
 		FA557DAE7451A964C8C3E074 /* PitchHarmony.swift in Sources */ = {isa = PBXBuildFile; fileRef = 087ED0235CD795DD212ACCB3 /* PitchHarmony.swift */; };
 /* End PBXBuildFile section */
@@ -34,6 +35,7 @@
 		89275C593D2365CF1D5D8204 /* ScoreModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreModels.swift; sourceTree = "<group>"; };
 		98420FB07A374FBE55521BFF /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		B63AFDADE04A6DC48812F6D7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B7483166585F6C78D6480E15 /* HarmonicColoring.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HarmonicColoring.swift; sourceTree = "<group>"; };
 		F0FBD7D89302BAA888A86F4A /* WOSViewerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WOSViewerApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -44,6 +46,7 @@
 				B63AFDADE04A6DC48812F6D7 /* Assets.xcassets */,
 				7468044CBA915323948D96A1 /* AudioAnalyzer.swift */,
 				98420FB07A374FBE55521BFF /* ContentView.swift */,
+				B7483166585F6C78D6480E15 /* HarmonicColoring.swift */,
 				6D6A73847795C479E3211A50 /* Info.plist */,
 				01812D672C049831455BE0BB /* Models.swift */,
 				087ED0235CD795DD212ACCB3 /* PitchHarmony.swift */,
@@ -143,6 +146,7 @@
 			files = (
 				08977185B752342BB63A2135 /* AudioAnalyzer.swift in Sources */,
 				C480AB2FCE3086359DD68D57 /* ContentView.swift in Sources */,
+				D94229341BD39B9FE3FA4B6C /* HarmonicColoring.swift in Sources */,
 				8E0890A7378755B90AEA0291 /* Models.swift in Sources */,
 				FA557DAE7451A964C8C3E074 /* PitchHarmony.swift in Sources */,
 				14DA2583EAA18AADC75FB0B4 /* ScoreAudioPlayer.swift in Sources */,

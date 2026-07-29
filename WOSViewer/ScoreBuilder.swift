@@ -177,7 +177,10 @@ enum ScoreBuilder {
         // Kräv viss tonartskonfidens — annars lämna tomt (EA / atonalt).
         guard pitch.keyConfidence >= 0.42 else {
             var cleared = doc
-            for i in cleared.objects.indices { cleared.objects[i].nashville = "" }
+            for i in cleared.objects.indices {
+                cleared.objects[i].nashville = ""
+                cleared.objects[i].pitchClass = -1
+            }
             return cleared
         }
 
@@ -188,6 +191,7 @@ enum ScoreBuilder {
             let tonal = obj.symbol.mass == .pitched || obj.symbol == .variable
             guard tonal else {
                 out.objects[i].nashville = ""
+                out.objects[i].pitchClass = -1
                 continue
             }
             if let pc = PitchHarmony.medianVoicedPitchClass(
@@ -196,12 +200,14 @@ enum ScoreBuilder {
                 start: obj.start,
                 end: obj.end
             ) {
+                out.objects[i].pitchClass = pc
                 out.objects[i].nashville = PitchHarmony.nashvilleNumber(
                     pitchClass: pc,
                     keyRoot: pitch.keyRoot,
                     mode: pitch.keyMode
                 )
             } else {
+                out.objects[i].pitchClass = -1
                 out.objects[i].nashville = ""
             }
         }

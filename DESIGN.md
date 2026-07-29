@@ -14,6 +14,7 @@
 | **3d** | Objektsiktbarhet via energi (RMS-filter) | Klar |
 | **4** | SVG/PDF-export (+ PNG via meny) | Klar |
 | **5** | Pitch/harmonicitet → Nashville (tonal musik) | Klar |
+| **5b** | Harmonic Coloring + Pitch Bars (MAM-inspirerat) | Klar |
 | **6** | MusicEyes-läge (separat) | Senare |
 
 ## Auto-analys (2b)
@@ -55,6 +56,12 @@
 - Nashville-siffror på tonala objekt (toggle **Nashville**)
 - Sparas i `.wosscore.json` / CSV (`Pitch_F0`, `Harmonicity`)
 - EA / låg konfidens → inga Nashville-etiketter
+
+## Skiva 5b — Harmonic Coloring + Pitch Bars
+
+- **Harm. färg**: objekt färgas enligt Malinowski (blått = tonika, mot rött = dominant / kvintcirkel)
+- **Pitch bars**: F₀-piano-roll under objektplanen med samma färgpalett
+- Toggles i score-raden; PNG/PDF följer; SVG färgar objekt
 
 Princip: en **testbar redigeringsloop** per skiva. Inte allt på en gång.
 
