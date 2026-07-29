@@ -76,19 +76,6 @@ struct ScoreEditorView: View {
         return obj.rmsEnergy + 1e-6 >= (1.0 - visibility)
     }
 
-    private func familyVisibilityBinding(_ family: InstrumentFamily) -> Binding<Bool> {
-        Binding(
-            get: { visibleFamilies.contains(family) },
-            set: { on in
-                if on {
-                    visibleFamilies.insert(family)
-                } else {
-                    visibleFamilies.remove(family)
-                }
-            }
-        )
-    }
-
     private var selectedObjectBinding: Binding<ScoreObject?> {
         Binding(
             get: {
@@ -397,32 +384,6 @@ struct ScoreEditorView: View {
                 }
                 .help("Objektsiktbarhet via energi (RMS). 100% = alla, 0% = inga. Svagare objekt försvinner först.")
 
-                Menu {
-                    ForEach(InstrumentFamily.allCases) { family in
-                        Toggle(isOn: familyVisibilityBinding(family)) {
-                            Label {
-                                Text(family.labelSV)
-                            } icon: {
-                                Circle().fill(family.color).frame(width: 8, height: 8)
-                            }
-                        }
-                    }
-                    Divider()
-                    Button("Visa alla") {
-                        visibleFamilies = Set(InstrumentFamily.allCases)
-                    }
-                    Button("Dölj alla") {
-                        visibleFamilies = []
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Text("Grupper")
-                        Text("\(visibleFamilies.count)/\(InstrumentFamily.allCases.count)")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .help("Visa eller dölj instrumentgrupper i score (stråk, blås, piano, slagverk, sång, övrigt). Export följer.")
-
                 Toggle("Spektrogram", isOn: $showSpectrogram)
                     .toggleStyle(.checkbox)
                     .fixedSize()
@@ -474,6 +435,62 @@ struct ScoreEditorView: View {
                 }
                 .help("Exporterar score i Viewer-stil: PNG, PDF eller SVG.")
             }
+
+            // Instrumentgrupper: visa / dölj (egen rad så den syns)
+            HStack(spacing: 8) {
+                Text("Grupper")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                ForEach(InstrumentFamily.allCases) { family in
+                    let on = visibleFamilies.contains(family)
+                    Button {
+                        if on {
+                            visibleFamilies.remove(family)
+                        } else {
+                            visibleFamilies.insert(family)
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(family.shortSV)
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white)
+                                .frame(width: 16, height: 16)
+                                .background(Circle().fill(family.color.opacity(on ? 1 : 0.35)))
+                            Text(family.labelSV)
+                                .font(.caption)
+                                .foregroundStyle(on ? Color.primary : Color.secondary)
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(on ? family.color.opacity(0.12) : Color.clear)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 5)
+                                .stroke(on ? family.color.opacity(0.55) : Color.secondary.opacity(0.25), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .help(on ? "Dölj \(family.labelSV)" : "Visa \(family.labelSV)")
+                }
+
+                Spacer(minLength: 8)
+
+                Button("Alla") {
+                    visibleFamilies = Set(InstrumentFamily.allCases)
+                }
+                .font(.caption)
+                .disabled(visibleFamilies.count == InstrumentFamily.allCases.count)
+
+                Button("Ingen") {
+                    visibleFamilies = []
+                }
+                .font(.caption)
+                .disabled(visibleFamilies.isEmpty)
+            }
+            .help("Visa eller dölj instrumentgrupper i score. Export följer.")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
