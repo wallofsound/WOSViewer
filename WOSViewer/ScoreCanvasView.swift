@@ -34,7 +34,7 @@ struct ScoreEditorView: View {
     @State private var selectedSymbol: ScoreSymbolKind = .pitchedSustained
     @State private var selectedFormShape: DynamicForm.Shape = .crescendo
     @State private var selectedFamily: InstrumentFamily = .other
-    @State private var familyFilter: InstrumentFamily? = nil
+    @State private var visibleFamilies: Set<InstrumentFamily> = Set(InstrumentFamily.allCases)
     @State private var selection: ScoreEditSelection = .none
     @State private var placementTool: PlacementTool = .none
     @State private var pixelsPerSecond: CGFloat = 28
@@ -59,22 +59,34 @@ struct ScoreEditorView: View {
 
     private var keyRootForColor: Int { pitch?.keyRoot ?? 0 }
 
-
     private var visibleObjects: [ScoreObject] {
         score.objects.filter {
-            Self.isObjectVisible($0, visibility: objectVisibility, familyFilter: familyFilter)
+            Self.isObjectVisible($0, visibility: objectVisibility, visibleFamilies: visibleFamilies)
         }
     }
 
     private static func isObjectVisible(
         _ obj: ScoreObject,
         visibility: Double,
-        familyFilter: InstrumentFamily?
+        visibleFamilies: Set<InstrumentFamily>
     ) -> Bool {
-        if let familyFilter, obj.family != familyFilter { return false }
+        guard visibleFamilies.contains(obj.family) else { return false }
         if visibility <= 0.001 { return false }
         if visibility >= 0.999 { return true }
         return obj.rmsEnergy + 1e-6 >= (1.0 - visibility)
+    }
+
+    private func familyVisibilityBinding(_ family: InstrumentFamily) -> Binding<Bool> {
+        Binding(
+            get: { visibleFamilies.contains(family) },
+            set: { on in
+                if on {
+                    visibleFamilies.insert(family)
+                } else {
+                    visibleFamilies.remove(family)
+                }
+            }
+        )
     }
 
     private var selectedObjectBinding: Binding<ScoreObject?> {
@@ -160,7 +172,7 @@ struct ScoreEditorView: View {
                         selectedFamily: selectedFamily,
                         pixelsPerSecond: pixelsPerSecond,
                         objectVisibility: objectVisibility,
-                        familyFilter: familyFilter,
+                        visibleFamilies: visibleFamilies,
                         isInteracting: $isInteracting,
                         presentation: presentation,
                         spectrogram: spectrogram,
@@ -385,15 +397,31 @@ struct ScoreEditorView: View {
                 }
                 .help("Objektsiktbarhet via energi (RMS). 100% = alla, 0% = inga. Svagare objekt försvinner först.")
 
-                Picker("Grupp", selection: $familyFilter) {
-                    Text("Alla grupper").tag(Optional<InstrumentFamily>.none)
+                Menu {
                     ForEach(InstrumentFamily.allCases) { family in
-                        Text(family.labelSV).tag(Optional(family))
+                        Toggle(isOn: familyVisibilityBinding(family)) {
+                            Label {
+                                Text(family.labelSV)
+                            } icon: {
+                                Circle().fill(family.color).frame(width: 8, height: 8)
+                            }
+                        }
+                    }
+                    Divider()
+                    Button("Visa alla") {
+                        visibleFamilies = Set(InstrumentFamily.allCases)
+                    }
+                    Button("Dölj alla") {
+                        visibleFamilies = []
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("Grupper")
+                        Text("\(visibleFamilies.count)/\(InstrumentFamily.allCases.count)")
+                            .foregroundStyle(.secondary)
                     }
                 }
-                .labelsHidden()
-                .frame(width: 130)
-                .help("Filtrera objekt efter instrumentgrupp (stråk, blås, piano, slagverk, sång, övrigt).")
+                .help("Visa eller dölj instrumentgrupper i score (stråk, blås, piano, slagverk, sång, övrigt). Export följer.")
 
                 Toggle("Spektrogram", isOn: $showSpectrogram)
                     .toggleStyle(.checkbox)
@@ -488,7 +516,7 @@ struct ScoreEditorView: View {
             pixelsPerSecond: pixelsPerSecond,
             spectrogram: showSpectrogram ? spectrogram : nil,
             objectVisibility: objectVisibility,
-            familyFilter: familyFilter,
+            visibleFamilies: visibleFamilies,
             showNashville: showNashville,
             showHarmonicColor: showHarmonicColor,
             harmonicKeyRoot: keyRootForColor,
@@ -505,7 +533,7 @@ struct ScoreExportView: View {
     var pixelsPerSecond: CGFloat = 28
     var spectrogram: SpectrogramData? = nil
     var objectVisibility: Double = 1
-    var familyFilter: InstrumentFamily? = nil
+    var visibleFamilies: Set<InstrumentFamily> = Set(InstrumentFamily.allCases)
     var showNashville: Bool = false
     var showHarmonicColor: Bool = false
     var harmonicKeyRoot: Int = 0
@@ -524,7 +552,7 @@ struct ScoreExportView: View {
                 selectedFamily: .other,
                 pixelsPerSecond: pixelsPerSecond,
                 objectVisibility: objectVisibility,
-                familyFilter: familyFilter,
+                visibleFamilies: visibleFamilies,
                 isInteracting: .constant(false),
                 presentation: .view,
                 spectrogram: spectrogram,
@@ -841,7 +869,7 @@ struct ScoreCanvasView: View {
     var selectedFamily: InstrumentFamily = .other
     var pixelsPerSecond: CGFloat
     var objectVisibility: Double = 1
-    var familyFilter: InstrumentFamily? = nil
+    var visibleFamilies: Set<InstrumentFamily> = Set(InstrumentFamily.allCases)
     @Binding var isInteracting: Bool
     var presentation: ScorePresentationMode
     var spectrogram: SpectrogramData? = nil
@@ -874,7 +902,7 @@ struct ScoreCanvasView: View {
 
     private var visibleObjects: [ScoreObject] {
         score.objects.filter { obj in
-            if let familyFilter, obj.family != familyFilter { return false }
+            guard visibleFamilies.contains(obj.family) else { return false }
             if objectVisibility <= 0.001 { return false }
             if objectVisibility >= 0.999 { return true }
             return obj.rmsEnergy + 1e-6 >= (1.0 - objectVisibility)

@@ -47,7 +47,7 @@ enum ScoreExporter {
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
         objectVisibility: Double,
-        familyFilter: InstrumentFamily? = nil,
+        visibleFamilies: Set<InstrumentFamily> = Set(InstrumentFamily.allCases),
         showNashville: Bool = false,
         showHarmonicColor: Bool = false,
         harmonicKeyRoot: Int = 0,
@@ -73,7 +73,7 @@ enum ScoreExporter {
                     pixelsPerSecond: pixelsPerSecond,
                     spectrogram: spectrogram,
                     objectVisibility: objectVisibility,
-                    familyFilter: familyFilter,
+                    visibleFamilies: visibleFamilies,
                     showNashville: showNashville,
                     showHarmonicColor: showHarmonicColor,
                     harmonicKeyRoot: harmonicKeyRoot,
@@ -86,7 +86,7 @@ enum ScoreExporter {
                     pixelsPerSecond: pixelsPerSecond,
                     spectrogram: spectrogram,
                     objectVisibility: objectVisibility,
-                    familyFilter: familyFilter,
+                    visibleFamilies: visibleFamilies,
                     showNashville: showNashville,
                     showHarmonicColor: showHarmonicColor,
                     harmonicKeyRoot: harmonicKeyRoot,
@@ -99,7 +99,7 @@ enum ScoreExporter {
                     pixelsPerSecond: pixelsPerSecond,
                     spectrogram: spectrogram,
                     objectVisibility: objectVisibility,
-                    familyFilter: familyFilter,
+                    visibleFamilies: visibleFamilies,
                     showNashville: showNashville,
                     showHarmonicColor: showHarmonicColor,
                     harmonicKeyRoot: harmonicKeyRoot
@@ -118,7 +118,7 @@ enum ScoreExporter {
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
         objectVisibility: Double,
-        familyFilter: InstrumentFamily?,
+        visibleFamilies: Set<InstrumentFamily>,
         showNashville: Bool,
         showHarmonicColor: Bool,
         harmonicKeyRoot: Int,
@@ -129,7 +129,7 @@ enum ScoreExporter {
             pixelsPerSecond: max(pixelsPerSecond, 24),
             spectrogram: spectrogram,
             objectVisibility: objectVisibility,
-            familyFilter: familyFilter,
+            visibleFamilies: visibleFamilies,
             showNashville: showNashville,
             showHarmonicColor: showHarmonicColor,
             harmonicKeyRoot: harmonicKeyRoot,
@@ -145,7 +145,7 @@ enum ScoreExporter {
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
         objectVisibility: Double,
-        familyFilter: InstrumentFamily?,
+        visibleFamilies: Set<InstrumentFamily>,
         showNashville: Bool,
         showHarmonicColor: Bool,
         harmonicKeyRoot: Int,
@@ -157,7 +157,7 @@ enum ScoreExporter {
                 pixelsPerSecond: pixelsPerSecond,
                 spectrogram: spectrogram,
                 objectVisibility: objectVisibility,
-                familyFilter: familyFilter,
+                visibleFamilies: visibleFamilies,
                 showNashville: showNashville,
                 showHarmonicColor: showHarmonicColor,
                 harmonicKeyRoot: harmonicKeyRoot,
@@ -180,7 +180,7 @@ enum ScoreExporter {
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
         objectVisibility: Double,
-        familyFilter: InstrumentFamily?,
+        visibleFamilies: Set<InstrumentFamily>,
         showNashville: Bool,
         showHarmonicColor: Bool,
         harmonicKeyRoot: Int,
@@ -192,7 +192,7 @@ enum ScoreExporter {
                 pixelsPerSecond: pixelsPerSecond,
                 spectrogram: spectrogram,
                 objectVisibility: objectVisibility,
-                familyFilter: familyFilter,
+                visibleFamilies: visibleFamilies,
                 showNashville: showNashville,
                 showHarmonicColor: showHarmonicColor,
                 harmonicKeyRoot: harmonicKeyRoot,
@@ -222,7 +222,7 @@ enum ScoreExporter {
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
         objectVisibility: Double,
-        familyFilter: InstrumentFamily?,
+        visibleFamilies: Set<InstrumentFamily>,
         showNashville: Bool,
         showHarmonicColor: Bool,
         harmonicKeyRoot: Int
@@ -232,7 +232,7 @@ enum ScoreExporter {
             pixelsPerSecond: max(pixelsPerSecond, 24),
             spectrogram: spectrogram,
             objectVisibility: objectVisibility,
-            familyFilter: familyFilter,
+            visibleFamilies: visibleFamilies,
             showNashville: showNashville,
             showHarmonicColor: showHarmonicColor,
             harmonicKeyRoot: harmonicKeyRoot
@@ -258,7 +258,7 @@ enum ScoreSVGBuilder {
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
         objectVisibility: Double,
-        familyFilter: InstrumentFamily? = nil,
+        visibleFamilies: Set<InstrumentFamily> = Set(InstrumentFamily.allCases),
         showNashville: Bool = false,
         showHarmonicColor: Bool = false,
         harmonicKeyRoot: Int = 0
@@ -280,7 +280,7 @@ enum ScoreSVGBuilder {
         }
 
         let visible = score.objects.filter { obj in
-            if let familyFilter, obj.family != familyFilter { return false }
+            guard visibleFamilies.contains(obj.family) else { return false }
             if objectVisibility <= 0.001 { return false }
             if objectVisibility >= 0.999 { return true }
             return obj.rmsEnergy + 1e-6 >= (1.0 - objectVisibility)

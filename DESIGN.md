@@ -70,7 +70,7 @@
 - Visuellt: **badge** (S/B/P/X/V/?) + **basfärg** + streckmönster på varaktighetslinje
 - Harmonic coloring överstyr glyph-färg när den är på; familjbadgen behålls
 - Palett: välj grupp innan placering; inspector: ändra grupp
-- Filter **Grupp** i verktygsraden (export följer filtret)
+- Filter **Grupper** i verktygsraden: visa/dölj varje grupp oberoende (export följer)
 - Auto-förslag vid analys från harmonicitet/centroid/ZCR/symbol (svagt — manuell rättning förväntas)
 - **Inte** äkta stem-separation / ML-instrumentigenkänning
 
