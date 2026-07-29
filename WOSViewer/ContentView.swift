@@ -164,6 +164,7 @@ struct ContentView: View {
                             sourceURL: result.sourceURL?.pathExtension.lowercased() == "csv" ? nil : result.sourceURL,
                             featureSeries: result.series,
                             spectrogram: result.spectrogram,
+                            pitch: result.pitch,
                             onSave: { _ in model.saveScore() },
                             onStatus: { model.statusMessage = $0 }
                         )
@@ -276,6 +277,14 @@ struct ContentView: View {
                 title: "MFCCs",
                 text: "Mel-Frequency Cepstral Coefficients — kompakt beskrivning av klangfärg / textur. MFCC₁ visas som kurva; används också vid score-förslag."
             )
+            glossaryRow(
+                title: "Pitch F₀",
+                text: "Uppskattad grundton (Hz). 0 betyder obestämd / otonal ram."
+            )
+            glossaryRow(
+                title: "Harmonicitet",
+                text: "Periodicitet / tonal klarhet (0–1). Högre = mer tonalt; lägre = brusigare."
+            )
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -316,7 +325,9 @@ struct FeaturePlotView: View {
         .novelty: Color(red: 0.15, green: 0.55, blue: 0.25),
         .centroid: Color(red: 0.55, green: 0.15, blue: 0.12),
         .zcr: Color(red: 0.55, green: 0.15, blue: 0.55),
-        .mfcc1: Color(red: 0.15, green: 0.45, blue: 0.55)
+        .mfcc1: Color(red: 0.15, green: 0.45, blue: 0.55),
+        .pitchF0: Color(red: 0.70, green: 0.35, blue: 0.10),
+        .harmonicity: Color(red: 0.20, green: 0.35, blue: 0.45)
     ]
 
     var body: some View {

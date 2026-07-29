@@ -55,12 +55,21 @@ struct AudioAnalyzer {
         }
         let duration = Double(mono.samples.count) / mono.sampleRate
 
-        let series: [FeatureSeries] = [
+        let pitch = PitchHarmony.analyze(
+            frames: frames,
+            spectra: spectra,
+            sampleRate: mono.sampleRate,
+            fftSize: frameLength
+        )
+
+        var series: [FeatureSeries] = [
             makeSeries(.rms, times: times, values: rms),
             makeSeries(.novelty, times: times, values: novelty),
             makeSeries(.centroid, times: times, values: centroid),
             makeSeries(.zcr, times: times, values: zcr),
-            makeSeries(.mfcc1, times: times, values: mfcc1)
+            makeSeries(.mfcc1, times: times, values: mfcc1),
+            makeSeries(.pitchF0, times: times, values: pitch.f0Hz),
+            makeSeries(.harmonicity, times: times, values: pitch.harmonicity)
         ]
 
         let csvURL = try? writeCSV(
@@ -70,16 +79,18 @@ struct AudioAnalyzer {
             centroid: centroid,
             zcr: zcr,
             novelty: novelty,
-            mfcc1: mfcc1
+            mfcc1: mfcc1,
+            f0: pitch.f0Hz,
+            harmonicity: pitch.harmonicity
         )
 
         let score: ScoreDocument
         let scoreURL: URL?
         if let existing = ScoreStore.load(beside: url) {
-            score = existing
+            score = ScoreBuilder.applyNashville(existing, pitch: pitch, times: times)
             scoreURL = ScoreStore.url(beside: url)
         } else {
-            let built = ScoreBuilder.build(
+            var built = ScoreBuilder.build(
                 sourceName: url.lastPathComponent,
                 duration: duration,
                 times: times,
@@ -89,6 +100,7 @@ struct AudioAnalyzer {
                 novelty: novelty,
                 mfcc1: mfcc1
             )
+            built = ScoreBuilder.applyNashville(built, pitch: pitch, times: times)
             score = built
             scoreURL = try? ScoreStore.save(built, beside: url)
         }
@@ -111,6 +123,7 @@ struct AudioAnalyzer {
             frameLength: frameLength,
             series: series,
             spectrogram: spectrogram,
+            pitch: pitch,
             csvURL: csvURL,
             score: score,
             scoreURL: scoreURL
@@ -192,6 +205,7 @@ struct AudioAnalyzer {
             frameLength: frameLength,
             series: series,
             spectrogram: nil,
+            pitch: nil,
             csvURL: url,
             score: score,
             scoreURL: scoreURL
@@ -541,14 +555,18 @@ struct AudioAnalyzer {
         centroid: [Double],
         zcr: [Double],
         novelty: [Double],
-        mfcc1: [Double]
+        mfcc1: [Double],
+        f0: [Double],
+        harmonicity: [Double]
     ) throws -> URL {
         let out = audioURL.deletingPathExtension().appendingPathExtension("wos.csv")
-        var lines = ["Time_Seconds,RMS_Energy,Spectral_Centroid,ZCR,Novelty_Curve,MFCC_1"]
+        var lines = ["Time_Seconds,RMS_Energy,Spectral_Centroid,ZCR,Novelty_Curve,MFCC_1,Pitch_F0,Harmonicity"]
         for i in 0..<times.count {
             lines.append(String(
-                format: "%.6f,%.8f,%.6f,%.8f,%.8f,%.6f",
-                times[i], rms[i], centroid[i], zcr[i], novelty[i], mfcc1[i]
+                format: "%.6f,%.8f,%.6f,%.8f,%.8f,%.6f,%.3f,%.4f",
+                times[i], rms[i], centroid[i], zcr[i], novelty[i], mfcc1[i],
+                f0.indices.contains(i) ? f0[i] : 0,
+                harmonicity.indices.contains(i) ? harmonicity[i] : 0
             ))
         }
         try lines.joined(separator: "\n").write(to: out, atomically: true, encoding: .utf8)

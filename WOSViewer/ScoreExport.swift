@@ -47,6 +47,7 @@ enum ScoreExporter {
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
         objectVisibility: Double,
+        showNashville: Bool = false,
         onStatus: ((String) -> Void)?
     ) {
         let panel = NSSavePanel()
@@ -67,7 +68,8 @@ enum ScoreExporter {
                     score: score,
                     pixelsPerSecond: pixelsPerSecond,
                     spectrogram: spectrogram,
-                    objectVisibility: objectVisibility
+                    objectVisibility: objectVisibility,
+                    showNashville: showNashville
                 )
             case .pdf:
                 try writePDF(
@@ -75,7 +77,8 @@ enum ScoreExporter {
                     score: score,
                     pixelsPerSecond: pixelsPerSecond,
                     spectrogram: spectrogram,
-                    objectVisibility: objectVisibility
+                    objectVisibility: objectVisibility,
+                    showNashville: showNashville
                 )
             case .svg:
                 try writeSVG(
@@ -83,7 +86,8 @@ enum ScoreExporter {
                     score: score,
                     pixelsPerSecond: pixelsPerSecond,
                     spectrogram: spectrogram,
-                    objectVisibility: objectVisibility
+                    objectVisibility: objectVisibility,
+                    showNashville: showNashville
                 )
             }
             onStatus?("Score-\(format.rawValue.uppercased()) sparad: \(url.lastPathComponent)")
@@ -98,13 +102,15 @@ enum ScoreExporter {
         score: ScoreDocument,
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
-        objectVisibility: Double
+        objectVisibility: Double,
+        showNashville: Bool
     ) -> some View {
         ScoreExportView(
             score: score,
             pixelsPerSecond: max(pixelsPerSecond, 24),
             spectrogram: spectrogram,
-            objectVisibility: objectVisibility
+            objectVisibility: objectVisibility,
+            showNashville: showNashville
         )
         .padding(16)
         .background(Color.white)
@@ -115,14 +121,16 @@ enum ScoreExporter {
         score: ScoreDocument,
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
-        objectVisibility: Double
+        objectVisibility: Double,
+        showNashville: Bool
     ) throws {
         let renderer = ImageRenderer(
             content: exportView(
                 score: score,
                 pixelsPerSecond: pixelsPerSecond,
                 spectrogram: spectrogram,
-                objectVisibility: objectVisibility
+                objectVisibility: objectVisibility,
+                showNashville: showNashville
             )
         )
         renderer.scale = 2
@@ -140,14 +148,16 @@ enum ScoreExporter {
         score: ScoreDocument,
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
-        objectVisibility: Double
+        objectVisibility: Double,
+        showNashville: Bool
     ) throws {
         let renderer = ImageRenderer(
             content: exportView(
                 score: score,
                 pixelsPerSecond: pixelsPerSecond,
                 spectrogram: spectrogram,
-                objectVisibility: objectVisibility
+                objectVisibility: objectVisibility,
+                showNashville: showNashville
             )
         )
         renderer.scale = 2
@@ -167,20 +177,20 @@ enum ScoreExporter {
         }
     }
 
-    // MARK: - SVG (vector from score model)
-
     private static func writeSVG(
         to url: URL,
         score: ScoreDocument,
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
-        objectVisibility: Double
+        objectVisibility: Double,
+        showNashville: Bool
     ) throws {
         let svg = ScoreSVGBuilder.build(
             score: score,
             pixelsPerSecond: max(pixelsPerSecond, 24),
             spectrogram: spectrogram,
-            objectVisibility: objectVisibility
+            objectVisibility: objectVisibility,
+            showNashville: showNashville
         )
         guard let data = svg.data(using: .utf8) else { throw ScoreExportError.renderFailed }
         try data.write(to: url, options: .atomic)
@@ -202,7 +212,8 @@ enum ScoreSVGBuilder {
         score: ScoreDocument,
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
-        objectVisibility: Double
+        objectVisibility: Double,
+        showNashville: Bool = false
     ) -> String {
         let canvasW = max(CGFloat(score.duration) * pixelsPerSecond + 80, 600)
         let objectH = CGFloat(laneCount) * laneHeight
@@ -323,7 +334,15 @@ enum ScoreSVGBuilder {
                 "<text x=\"0\" y=\"14\" font-family=\"Menlo, monospace\" font-size=\"11\" " +
                 "font-weight=\"700\" fill=\"#111\">\(esc(obj.label))</text>"
             )
-            out.append(contentsOf: symbolSVG(kind: obj.symbol, filled: obj.filled, x: 16, y: 2))
+            if showNashville, !obj.nashville.isEmpty {
+                out.append(
+                    "<text x=\"14\" y=\"14\" font-family=\"Helvetica, Arial, sans-serif\" font-size=\"10\" " +
+                    "font-weight=\"600\" fill=\"#c45c12\">\(esc(obj.nashville))</text>"
+                )
+                out.append(contentsOf: symbolSVG(kind: obj.symbol, filled: obj.filled, x: 28, y: 2))
+            } else {
+                out.append(contentsOf: symbolSVG(kind: obj.symbol, filled: obj.filled, x: 16, y: 2))
+            }
             if w > 40 {
                 let lineY: CGFloat = 14
                 let x0: CGFloat = 40

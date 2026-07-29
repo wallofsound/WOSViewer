@@ -14,6 +14,8 @@ struct FeatureSeries: Identifiable {
         case centroid = "Spectral Centroid (Brightness)"
         case zcr = "Zero-Crossing Rate (Noisiness/Percussiveness)"
         case mfcc1 = "MFCC₁ (Timbral Texture Cue)"
+        case pitchF0 = "Pitch F₀ (Fundamental Frequency)"
+        case harmonicity = "Harmonicity (Periodicity / Tonality)"
 
         var id: String { rawValue }
 
@@ -24,6 +26,8 @@ struct FeatureSeries: Identifiable {
             case .centroid: return "Frequency (Hz)"
             case .zcr: return "ZCR"
             case .mfcc1: return "MFCC₁"
+            case .pitchF0: return "F₀ (Hz)"
+            case .harmonicity: return "Harmonicity (0–1)"
             }
         }
     }
@@ -99,6 +103,7 @@ struct AnalysisResult: Identifiable {
     let frameLength: Int
     let series: [FeatureSeries]
     let spectrogram: SpectrogramData?
+    let pitch: PitchAnalysis?
     let csvURL: URL?
     let score: ScoreDocument
     let scoreURL: URL?

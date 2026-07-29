@@ -17,10 +17,12 @@
 		8E0890A7378755B90AEA0291 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01812D672C049831455BE0BB /* Models.swift */; };
 		C480AB2FCE3086359DD68D57 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98420FB07A374FBE55521BFF /* ContentView.swift */; };
 		F4D98AFAF0E0339DA35F6B5F /* WOSViewerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0FBD7D89302BAA888A86F4A /* WOSViewerApp.swift */; };
+		FA557DAE7451A964C8C3E074 /* PitchHarmony.swift in Sources */ = {isa = PBXBuildFile; fileRef = 087ED0235CD795DD212ACCB3 /* PitchHarmony.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		01812D672C049831455BE0BB /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		087ED0235CD795DD212ACCB3 /* PitchHarmony.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PitchHarmony.swift; sourceTree = "<group>"; };
 		1AF500E01A6AD2B02F45EFD6 /* ScoreBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreBuilder.swift; sourceTree = "<group>"; };
 		349B321E771B6130238A5383 /* ScoreExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreExport.swift; sourceTree = "<group>"; };
 		49556E871C1D52B1EA43E701 /* WOSViewer.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WOSViewer.entitlements; sourceTree = "<group>"; };
@@ -44,6 +46,7 @@
 				98420FB07A374FBE55521BFF /* ContentView.swift */,
 				6D6A73847795C479E3211A50 /* Info.plist */,
 				01812D672C049831455BE0BB /* Models.swift */,
+				087ED0235CD795DD212ACCB3 /* PitchHarmony.swift */,
 				5E8B92B91EE4A5BFA11B9BA7 /* ScoreAudioPlayer.swift */,
 				1AF500E01A6AD2B02F45EFD6 /* ScoreBuilder.swift */,
 				6C793D2994B939619B3670F4 /* ScoreCanvasView.swift */,
@@ -141,6 +144,7 @@
 				08977185B752342BB63A2135 /* AudioAnalyzer.swift in Sources */,
 				C480AB2FCE3086359DD68D57 /* ContentView.swift in Sources */,
 				8E0890A7378755B90AEA0291 /* Models.swift in Sources */,
+				FA557DAE7451A964C8C3E074 /* PitchHarmony.swift in Sources */,
 				14DA2583EAA18AADC75FB0B4 /* ScoreAudioPlayer.swift in Sources */,
 				879D3530FCB2DA9DD558DEEC /* ScoreBuilder.swift in Sources */,
 				0AC0FAE78D0392FB51C1877D /* ScoreCanvasView.swift in Sources */,
