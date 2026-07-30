@@ -87,7 +87,7 @@ struct AudioAnalyzer {
         let score: ScoreDocument
         let scoreURL: URL?
         if let existing = ScoreStore.load(beside: url) {
-            score = ScoreBuilder.applyNashville(existing, pitch: pitch, times: times)
+            score = ScoreBuilder.applyPitchClasses(existing, pitch: pitch, times: times)
             scoreURL = ScoreStore.url(beside: url)
         } else {
             var built = ScoreBuilder.build(
@@ -101,7 +101,7 @@ struct AudioAnalyzer {
                 mfcc1: mfcc1,
                 harmonicity: pitch.harmonicity
             )
-            built = ScoreBuilder.applyNashville(built, pitch: pitch, times: times)
+            built = ScoreBuilder.applyPitchClasses(built, pitch: pitch, times: times)
             score = built
             scoreURL = try? ScoreStore.save(built, beside: url)
         }

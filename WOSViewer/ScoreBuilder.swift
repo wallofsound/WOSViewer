@@ -171,23 +171,13 @@ enum ScoreBuilder {
         return min(1, local / peak)
     }
 
-    /// Annotera objekt med Nashville-siffror utifrån F₀ + uppskattad tonart.
-    static func applyNashville(
+    /// Sätt pitchClass på objekt från F₀ (för harmonic coloring). Ingen Nashville.
+    static func applyPitchClasses(
         _ doc: ScoreDocument,
         pitch: PitchAnalysis,
         times: [Double]
     ) -> ScoreDocument {
         guard !pitch.f0Hz.isEmpty, pitch.f0Hz.count == times.count else { return doc }
-        // Samma tröskel som tonartsvisning i UI (~0.35).
-        guard pitch.keyConfidence >= 0.35 else {
-            var cleared = doc
-            for i in cleared.objects.indices {
-                cleared.objects[i].nashville = ""
-                cleared.objects[i].pitchClass = -1
-            }
-            return cleared
-        }
-
         var out = doc
         for i in out.objects.indices {
             let obj = out.objects[i]
@@ -198,14 +188,8 @@ enum ScoreBuilder {
                 end: obj.end
             ) {
                 out.objects[i].pitchClass = pc
-                out.objects[i].nashville = PitchHarmony.nashvilleNumber(
-                    pitchClass: pc,
-                    keyRoot: pitch.keyRoot,
-                    mode: pitch.keyMode
-                )
             } else {
                 out.objects[i].pitchClass = -1
-                out.objects[i].nashville = ""
             }
         }
         return out
