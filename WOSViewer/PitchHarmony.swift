@@ -20,6 +20,8 @@ struct PitchAnalysis {
     let harmonicity: [Double]
     /// Average chroma (12), C=0 … B=11.
     let meanChroma: [Double]
+    /// Per-frame chroma (same length as f0Hz), empty if unavailable.
+    let frameChroma: [[Double]]
     let keyRoot: Int
     let keyMode: KeyMode
     let keyConfidence: Double
@@ -34,6 +36,7 @@ struct PitchAnalysis {
         f0Hz: [],
         harmonicity: [],
         meanChroma: Array(repeating: 0, count: 12),
+        frameChroma: [],
         keyRoot: 0,
         keyMode: .major,
         keyConfidence: 0
@@ -67,8 +70,10 @@ enum PitchHarmony {
 
         var chromaAcc = [Double](repeating: 0, count: 12)
         var chromaWeight = 0.0
+        var frameChroma: [[Double]] = Array(repeating: Array(repeating: 0, count: 12), count: spectra.count)
         for (i, mag) in spectra.enumerated() {
             let c = chromaVector(magnitude: mag, sampleRate: sampleRate, fftSize: fftSize)
+            frameChroma[i] = c
             let w = max(0.05, harm.indices.contains(i) ? harm[i] : 0.2)
             for k in 0..<12 {
                 chromaAcc[k] += c[k] * w
@@ -84,6 +89,7 @@ enum PitchHarmony {
             f0Hz: f0,
             harmonicity: harm,
             meanChroma: chromaAcc,
+            frameChroma: frameChroma,
             keyRoot: key.root,
             keyMode: key.mode,
             keyConfidence: key.confidence
@@ -273,5 +279,132 @@ enum PitchHarmony {
         let den = sqrt(da * db)
         guard den > 1e-12 else { return 0 }
         return num / den
+    }
+}
+
+/// Nashville degrees over time (chord-friendly windows merged into segments).
+struct NashvilleSegment: Identifiable, Hashable {
+    let id: UUID
+    let start: Double
+    let end: Double
+    let number: String
+    let pitchClass: Int
+
+    init(id: UUID = UUID(), start: Double, end: Double, number: String, pitchClass: Int) {
+        self.id = id
+        self.start = start
+        self.end = end
+        self.number = number
+        self.pitchClass = pitchClass
+    }
+}
+
+struct NashvilleStripData {
+    let segments: [NashvilleSegment]
+    let keyRoot: Int
+    let keyLabel: String
+    let confidence: Double
+
+    /// Bygg en remsa av Nashville-siffror över tid.
+    /// Prefererar kroma-topp i fönstret (ackordlikt); faller tillbaka på F₀ om kroma saknas.
+    static func from(
+        pitch: PitchAnalysis,
+        times: [Double],
+        window: Double = 0.75,
+        minSegment: Double = 0.45
+    ) -> NashvilleStripData? {
+        guard pitch.keyConfidence >= 0.22,
+              !times.isEmpty,
+              let tFirst = times.first,
+              let tLast = times.last,
+              tLast > tFirst
+        else { return nil }
+
+        let useChroma = pitch.frameChroma.count == times.count
+        let useF0 = pitch.f0Hz.count == times.count
+        guard useChroma || useF0 else { return nil }
+
+        var samples: [(start: Double, end: Double, number: String, pc: Int)] = []
+        var t = tFirst
+        let step = window * 0.4
+        while t < tLast - 0.05 {
+            let end = min(tLast, t + window)
+            let pc: Int? = {
+                if useChroma, let c = dominantPitchClass(chromaFrames: pitch.frameChroma, times: times, start: t, end: end) {
+                    return c
+                }
+                if useF0 {
+                    return PitchHarmony.medianVoicedPitchClass(
+                        f0: pitch.f0Hz,
+                        times: times,
+                        start: t,
+                        end: end
+                    )
+                }
+                return nil
+            }()
+            if let pc {
+                let number = PitchHarmony.nashvilleNumber(
+                    pitchClass: pc,
+                    keyRoot: pitch.keyRoot,
+                    mode: pitch.keyMode
+                )
+                samples.append((t, end, number, pc))
+            }
+            t += step
+        }
+        guard !samples.isEmpty else { return nil }
+
+        var merged: [NashvilleSegment] = []
+        var curStart = samples[0].start
+        var curEnd = samples[0].end
+        var curNum = samples[0].number
+        var curPC = samples[0].pc
+
+        for s in samples.dropFirst() {
+            if s.number == curNum {
+                curEnd = max(curEnd, s.end)
+            } else {
+                if curEnd - curStart >= minSegment {
+                    merged.append(NashvilleSegment(start: curStart, end: curEnd, number: curNum, pitchClass: curPC))
+                }
+                curStart = s.start
+                curEnd = s.end
+                curNum = s.number
+                curPC = s.pc
+            }
+        }
+        if curEnd - curStart >= minSegment * 0.55 {
+            merged.append(NashvilleSegment(start: curStart, end: curEnd, number: curNum, pitchClass: curPC))
+        }
+
+        guard !merged.isEmpty else { return nil }
+        return NashvilleStripData(
+            segments: merged,
+            keyRoot: pitch.keyRoot,
+            keyLabel: pitch.keyLabel,
+            confidence: pitch.keyConfidence
+        )
+    }
+
+    /// Starkaste kroma-klass i tidsfönster (ackord/root-liknande).
+    private static func dominantPitchClass(
+        chromaFrames: [[Double]],
+        times: [Double],
+        start: Double,
+        end: Double
+    ) -> Int? {
+        var acc = [Double](repeating: 0, count: 12)
+        var n = 0
+        for i in times.indices {
+            let t = times[i]
+            guard t >= start, t <= end, chromaFrames[i].count == 12 else { continue }
+            for k in 0..<12 { acc[k] += chromaFrames[i][k] }
+            n += 1
+        }
+        guard n > 0, let best = acc.enumerated().max(by: { $0.element < $1.element }), best.element > 1e-9 else {
+            return nil
+        }
+        return best.offset
     }
 }

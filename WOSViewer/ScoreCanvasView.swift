@@ -33,8 +33,6 @@ struct ScoreEditorView: View {
 
     @State private var selectedSymbol: ScoreSymbolKind = .pitchedSustained
     @State private var selectedFormShape: DynamicForm.Shape = .crescendo
-    @State private var selectedFamily: InstrumentFamily = .other
-    @State private var visibleFamilies: Set<InstrumentFamily> = Set(InstrumentFamily.allCases)
     @State private var selection: ScoreEditSelection = .none
     @State private var placementTool: PlacementTool = .none
     @State private var pixelsPerSecond: CGFloat = 28
@@ -58,6 +56,12 @@ struct ScoreEditorView: View {
         return PitchBarsData.from(pitch: pitch, times: f0.points.map(\.time))
     }
 
+    private var nashvilleStripData: NashvilleStripData? {
+        guard showNashville, let pitch,
+              let f0 = featureSeries?.first(where: { $0.kind == .pitchF0 }) else { return nil }
+        return NashvilleStripData.from(pitch: pitch, times: f0.points.map(\.time))
+    }
+
     private var keyRootForColor: Int { pitch?.keyRoot ?? 0 }
 
     private var nashvilleLabeledCount: Int {
@@ -66,19 +70,10 @@ struct ScoreEditorView: View {
 
     private var visibleObjects: [ScoreObject] {
         score.objects.filter {
-            Self.isObjectVisible($0, visibility: objectVisibility, visibleFamilies: visibleFamilies)
+            if objectVisibility <= 0.001 { return false }
+            if objectVisibility >= 0.999 { return true }
+            return $0.rmsEnergy + 1e-6 >= (1.0 - objectVisibility)
         }
-    }
-
-    private static func isObjectVisible(
-        _ obj: ScoreObject,
-        visibility: Double,
-        visibleFamilies: Set<InstrumentFamily>
-    ) -> Bool {
-        guard visibleFamilies.contains(obj.family) else { return false }
-        if visibility <= 0.001 { return false }
-        if visibility >= 0.999 { return true }
-        return obj.rmsEnergy + 1e-6 >= (1.0 - visibility)
     }
 
     private var selectedObjectBinding: Binding<ScoreObject?> {
@@ -144,7 +139,6 @@ struct ScoreEditorView: View {
                 ScorePaletteView(
                     selectedSymbol: $selectedSymbol,
                     selectedFormShape: $selectedFormShape,
-                    selectedFamily: $selectedFamily,
                     placementTool: $placementTool
                 )
                 .frame(width: 176)
@@ -161,15 +155,14 @@ struct ScoreEditorView: View {
                         placementTool: $placementTool,
                         selectedSymbol: selectedSymbol,
                         selectedFormShape: selectedFormShape,
-                        selectedFamily: selectedFamily,
                         pixelsPerSecond: pixelsPerSecond,
                         objectVisibility: objectVisibility,
-                        visibleFamilies: visibleFamilies,
                         isInteracting: $isInteracting,
                         presentation: presentation,
                         spectrogram: spectrogram,
                         showSpectrogram: showSpectrogram,
                         showNashville: showNashville,
+                        nashvilleStrip: nashvilleStripData,
                         showHarmonicColor: showHarmonicColor,
                         harmonicKeyRoot: keyRootForColor,
                         pitchBars: showPitchBars ? pitchBarsData : nil,
@@ -425,7 +418,7 @@ struct ScoreEditorView: View {
                     .fixedSize()
                     .help(pitch == nil
                           ? "Nashville kräver ljudanalys (F₀ + tonart)."
-                          : "Visa Nashville-siffror (1, b3, 5…) på objekt med detekterad tonhöjd.")
+                          : "Visa Nashville-remsa under tidslinjen och siffror (1, b3, 5…) på objekt med detekterad tonhöjd.")
                     .disabled(pitch == nil)
 
                 Toggle("Harm. färg", isOn: $showHarmonicColor)
@@ -463,62 +456,6 @@ struct ScoreEditorView: View {
                 }
                 .help("Exporterar score i Viewer-stil: PNG, PDF eller SVG.")
             }
-
-            // Instrumentgrupper: visa / dölj (egen rad så den syns)
-            HStack(spacing: 8) {
-                Text("Grupper")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-
-                ForEach(InstrumentFamily.allCases) { family in
-                    let on = visibleFamilies.contains(family)
-                    Button {
-                        if on {
-                            visibleFamilies.remove(family)
-                        } else {
-                            visibleFamilies.insert(family)
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Text(family.shortSV)
-                                .font(.system(size: 10, weight: .bold, design: .rounded))
-                                .foregroundStyle(.white)
-                                .frame(width: 16, height: 16)
-                                .background(Circle().fill(family.color.opacity(on ? 1 : 0.35)))
-                            Text(family.labelSV)
-                                .font(.caption)
-                                .foregroundStyle(on ? Color.primary : Color.secondary)
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(
-                            RoundedRectangle(cornerRadius: 5)
-                                .fill(on ? family.color.opacity(0.12) : Color.clear)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 5)
-                                .stroke(on ? family.color.opacity(0.55) : Color.secondary.opacity(0.25), lineWidth: 1)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .help(on ? "Dölj \(family.labelSV)" : "Visa \(family.labelSV)")
-                }
-
-                Spacer(minLength: 8)
-
-                Button("Alla") {
-                    visibleFamilies = Set(InstrumentFamily.allCases)
-                }
-                .font(.caption)
-                .disabled(visibleFamilies.count == InstrumentFamily.allCases.count)
-
-                Button("Ingen") {
-                    visibleFamilies = []
-                }
-                .font(.caption)
-                .disabled(visibleFamilies.isEmpty)
-            }
-            .help("Visa eller dölj instrumentgrupper i score. Export följer.")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -561,8 +498,8 @@ struct ScoreEditorView: View {
             pixelsPerSecond: pixelsPerSecond,
             spectrogram: showSpectrogram ? spectrogram : nil,
             objectVisibility: objectVisibility,
-            visibleFamilies: visibleFamilies,
             showNashville: showNashville,
+            nashvilleStrip: showNashville ? nashvilleStripData : nil,
             showHarmonicColor: showHarmonicColor,
             harmonicKeyRoot: keyRootForColor,
             pitchBars: showPitchBars ? pitchBarsData : nil,
@@ -578,8 +515,8 @@ struct ScoreExportView: View {
     var pixelsPerSecond: CGFloat = 28
     var spectrogram: SpectrogramData? = nil
     var objectVisibility: Double = 1
-    var visibleFamilies: Set<InstrumentFamily> = Set(InstrumentFamily.allCases)
     var showNashville: Bool = false
+    var nashvilleStrip: NashvilleStripData? = nil
     var showHarmonicColor: Bool = false
     var harmonicKeyRoot: Int = 0
     var pitchBars: PitchBarsData? = nil
@@ -594,15 +531,14 @@ struct ScoreExportView: View {
                 placementTool: .constant(.none),
                 selectedSymbol: .pitchedSustained,
                 selectedFormShape: .crescendo,
-                selectedFamily: .other,
                 pixelsPerSecond: pixelsPerSecond,
                 objectVisibility: objectVisibility,
-                visibleFamilies: visibleFamilies,
                 isInteracting: .constant(false),
                 presentation: .view,
                 spectrogram: spectrogram,
                 showSpectrogram: spectrogram != nil,
                 showNashville: showNashville,
+                nashvilleStrip: nashvilleStrip,
                 showHarmonicColor: showHarmonicColor,
                 harmonicKeyRoot: harmonicKeyRoot,
                 pitchBars: pitchBars,
@@ -625,7 +561,6 @@ struct ScoreExportView: View {
 struct ScorePaletteView: View {
     @Binding var selectedSymbol: ScoreSymbolKind
     @Binding var selectedFormShape: DynamicForm.Shape
-    @Binding var selectedFamily: InstrumentFamily
     @Binding var placementTool: PlacementTool
 
     var body: some View {
@@ -637,34 +572,6 @@ struct ScorePaletteView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 
-                sectionTitle("Instrumentgrupp")
-                ForEach(InstrumentFamily.allCases) { family in
-                    Button {
-                        selectedFamily = family
-                    } label: {
-                        HStack(spacing: 8) {
-                            Circle()
-                                .fill(family.color)
-                                .frame(width: 10, height: 10)
-                            Text(family.shortSV)
-                                .font(.caption.weight(.bold).monospaced())
-                                .frame(width: 14, alignment: .center)
-                            Text(family.labelSV)
-                                .font(.caption)
-                            Spacer(minLength: 0)
-                        }
-                        .padding(6)
-                        .background(pill(active: selectedFamily == family))
-                    }
-                    .buttonStyle(.plain)
-                }
-                Text("Nya objekt får vald grupp. Auto-analys föreslår utifrån klang (manuell rättning förväntas).")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Divider()
-
                 sectionTitle("Objekt")
                 ForEach(ScoreSymbolKind.allCases) { kind in
                     Button {
@@ -672,7 +579,7 @@ struct ScorePaletteView: View {
                         placementTool = .symbol(kind)
                     } label: {
                         HStack(spacing: 8) {
-                            ScoreSymbolGlyph(kind: kind, filled: true, size: 18, color: selectedFamily.color)
+                            ScoreSymbolGlyph(kind: kind, filled: true, size: 18)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(kind.labelSV).font(.caption)
                                 Text(kind.mass.labelSV).font(.caption2).foregroundStyle(.secondary)
@@ -799,17 +706,6 @@ struct ScoreInspectorView: View {
             .labelsHidden()
         }
         Toggle("Fylld (annars öppen)", isOn: obj.filled)
-        labeled("Instrumentgrupp") {
-            Picker("Grupp", selection: obj.family) {
-                ForEach(InstrumentFamily.allCases) { family in
-                    Text(family.labelSV).tag(family)
-                }
-            }
-            .labelsHidden()
-            .onChange(of: obj.wrappedValue.family) { _, _ in
-                obj.wrappedValue.autoGenerated = false
-            }
-        }
         labeled("Lane (0=hög)") {
             Stepper(value: obj.lane, in: 0...2) { Text("\(obj.wrappedValue.lane)") }
         }
@@ -911,15 +807,14 @@ struct ScoreCanvasView: View {
     @Binding var placementTool: PlacementTool
     var selectedSymbol: ScoreSymbolKind
     var selectedFormShape: DynamicForm.Shape
-    var selectedFamily: InstrumentFamily = .other
     var pixelsPerSecond: CGFloat
     var objectVisibility: Double = 1
-    var visibleFamilies: Set<InstrumentFamily> = Set(InstrumentFamily.allCases)
     @Binding var isInteracting: Bool
     var presentation: ScorePresentationMode
     var spectrogram: SpectrogramData? = nil
     var showSpectrogram: Bool = false
     var showNashville: Bool = false
+    var nashvilleStrip: NashvilleStripData? = nil
     var showHarmonicColor: Bool = false
     var harmonicKeyRoot: Int = 0
     var pitchBars: PitchBarsData? = nil
@@ -938,19 +833,21 @@ struct ScoreCanvasView: View {
     private let fieldStripHeight: CGFloat = 22
     private let envelopeHeight: CGFloat = 70
     private let rulerHeight: CGFloat = 24
+    private let nashvilleStripHeight: CGFloat = 40
     private let bracketHeight: CGFloat = 28
     private let pitchBarsHeight: CGFloat = 72
 
     private var isEditing: Bool { presentation == .edit }
 
+    private var activeNashvilleHeight: CGFloat { nashvilleStrip == nil ? 0 : nashvilleStripHeight }
+
     private var activePitchBarsHeight: CGFloat { pitchBars == nil ? 0 : pitchBarsHeight }
 
     private var visibleObjects: [ScoreObject] {
-        score.objects.filter { obj in
-            guard visibleFamilies.contains(obj.family) else { return false }
+        score.objects.filter {
             if objectVisibility <= 0.001 { return false }
             if objectVisibility >= 0.999 { return true }
-            return obj.rmsEnergy + 1e-6 >= (1.0 - objectVisibility)
+            return $0.rmsEnergy + 1e-6 >= (1.0 - objectVisibility)
         }
     }
 
@@ -960,14 +857,16 @@ struct ScoreCanvasView: View {
 
     private var objectAreaHeight: CGFloat { CGFloat(laneCount) * laneHeight }
 
-    private var objectTop: CGFloat { rulerHeight + fieldStripHeight }
+    private var fieldStripY: CGFloat { rulerHeight + activeNashvilleHeight }
+
+    private var objectTop: CGFloat { rulerHeight + activeNashvilleHeight + fieldStripHeight }
 
     private var pitchBarsTop: CGFloat { objectTop + objectAreaHeight }
 
     private var envelopeTop: CGFloat { pitchBarsTop + activePitchBarsHeight }
 
     private var totalHeight: CGFloat {
-        rulerHeight + fieldStripHeight + objectAreaHeight + activePitchBarsHeight + envelopeHeight + bracketHeight + 16
+        rulerHeight + activeNashvilleHeight + fieldStripHeight + objectAreaHeight + activePitchBarsHeight + envelopeHeight + bracketHeight + 16
     }
 
     private var spectrogramWidth: CGFloat {
@@ -999,6 +898,16 @@ struct ScoreCanvasView: View {
 
             ruler
 
+            if let nashvilleStrip {
+                NashvilleStripCanvasView(
+                    data: nashvilleStrip,
+                    pixelsPerSecond: pixelsPerSecond,
+                    width: canvasWidth
+                )
+                .offset(y: rulerHeight)
+                .allowsHitTesting(false)
+            }
+
             // Editable time-field strip
             ForEach(score.timeFields) { field in
                 TimeFieldCanvasItem(
@@ -1006,7 +915,7 @@ struct ScoreCanvasView: View {
                     selected: isEditing && selection == .timeField(field.id),
                     pixelsPerSecond: pixelsPerSecond,
                     stripHeight: fieldStripHeight,
-                    stripY: rulerHeight,
+                    stripY: fieldStripY,
                     scoreDuration: score.duration,
                     presentation: presentation,
                     onSelect: {
@@ -1106,7 +1015,7 @@ struct ScoreCanvasView: View {
                 PlayheadView(
                     time: t,
                     pixelsPerSecond: pixelsPerSecond,
-                    height: fieldStripHeight + objectAreaHeight + activePitchBarsHeight + envelopeHeight,
+                    height: activeNashvilleHeight + fieldStripHeight + objectAreaHeight + activePitchBarsHeight + envelopeHeight,
                     scoreDuration: score.duration,
                     enabled: onSeek != nil,
                     onSeek: { newTime in onSeek?(newTime) },
@@ -1207,8 +1116,7 @@ struct ScoreCanvasView: View {
                 symbol: kind,
                 filled: true,
                 note: "manuell",
-                autoGenerated: false,
-                family: selectedFamily
+                autoGenerated: false
             )
             onPlaceObject(obj)
         case .timeField:
@@ -1295,6 +1203,41 @@ private struct PlayheadView: View {
         )
         .help(enabled ? "Dra playhead eller linjalen för startposition. Play fortsätter härifrån. Stop återställer till 0." : "")
         .allowsHitTesting(enabled)
+    }
+}
+
+// MARK: - Nashville time strip
+
+private struct NashvilleStripCanvasView: View {
+    let data: NashvilleStripData
+    var pixelsPerSecond: CGFloat
+    var width: CGFloat
+    var height: CGFloat = 40
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Rectangle().fill(Color.orange.opacity(0.10))
+            ForEach(data.segments) { seg in
+                let x = CGFloat(seg.start) * pixelsPerSecond + 8
+                let w = max(22, CGFloat(seg.end - seg.start) * pixelsPerSecond)
+                let color = HarmonicColoring.color(pitchClass: seg.pitchClass, keyRoot: data.keyRoot)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 5).fill(color.opacity(0.9))
+                    Text(seg.number)
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: w, height: height - 8)
+                .offset(x: x, y: 4)
+            }
+            Text("Nashville · \(data.keyLabel)")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 10)
+                .padding(.top, 2)
+                .allowsHitTesting(false)
+        }
+        .frame(width: width, height: height)
     }
 }
 
@@ -1635,8 +1578,7 @@ private struct ScoreObjectCanvasItem: View {
 
     private var live: ScoreObject { draft ?? object }
 
-    /// Glyph/ink: harmonic coloring när aktiv, annars familjens basfärg.
-    private var inkColor: Color { harmonicColor ?? live.family.color }
+    private var inkColor: Color { harmonicColor ?? .primary }
 
     private var width: CGFloat {
         max(presentation == .view ? 24 : 36, CGFloat(live.end - live.start) * pixelsPerSecond)
@@ -1655,16 +1597,6 @@ private struct ScoreObjectCanvasItem: View {
             }
         }
         .offset(x: xPos, y: yPos)
-        .help(live.family.labelSV)
-    }
-
-    private var familyBadge: some View {
-        Text(live.family.shortSV)
-            .font(.system(size: 8, weight: .bold, design: .rounded))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 3)
-            .padding(.vertical, 1)
-            .background(Capsule().fill(live.family.color))
     }
 
     @ViewBuilder
@@ -1681,7 +1613,6 @@ private struct ScoreObjectCanvasItem: View {
 
     private var viewerBody: some View {
         HStack(spacing: 4) {
-            familyBadge
             Text(live.label)
                 .font(.system(size: 11, weight: .bold, design: .monospaced))
                 .foregroundStyle(inkColor)
@@ -1696,7 +1627,7 @@ private struct ScoreObjectCanvasItem: View {
                             .stroke(
                                 style: StrokeStyle(
                                     lineWidth: 1,
-                                    dash: live.filled ? live.family.durationDash : [3, 2]
+                                    dash: live.filled ? [] : [3, 2]
                                 )
                             )
                             .foregroundStyle(inkColor)
@@ -1713,7 +1644,6 @@ private struct ScoreObjectCanvasItem: View {
                 .highPriorityGesture(dragGesture(mode: .resizeStart))
 
             HStack(spacing: 4) {
-                familyBadge
                 Text(live.label)
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
                     .foregroundStyle(inkColor)
@@ -1736,17 +1666,17 @@ private struct ScoreObjectCanvasItem: View {
         .overlay(
             RoundedRectangle(cornerRadius: 5)
                 .stroke(
-                    selected ? Color.accentColor : live.family.color.opacity(0.75),
+                    selected ? Color.accentColor : Color.primary.opacity(0.35),
                     lineWidth: selected ? 2 : 1.5
                 )
         )
-        .help("Mitten = flytta. ⟨⟩ = längd. ⌫ = radera. Grupp: \(live.family.labelSV).")
+        .help("Mitten = flytta. ⟨⟩ = längd. ⌫ = radera.")
     }
 
     private func edgeBar(label: String) -> some View {
         ZStack {
             Rectangle()
-                .fill(selected ? Color.accentColor.opacity(0.35) : live.family.color.opacity(0.18))
+                .fill(selected ? Color.accentColor.opacity(0.35) : Color.primary.opacity(0.08))
             Text(label)
                 .font(.system(size: 9, weight: .bold))
                 .foregroundStyle(selected ? Color.accentColor : Color.secondary)

@@ -47,8 +47,8 @@ enum ScoreExporter {
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
         objectVisibility: Double,
-        visibleFamilies: Set<InstrumentFamily> = Set(InstrumentFamily.allCases),
         showNashville: Bool = false,
+        nashvilleStrip: NashvilleStripData? = nil,
         showHarmonicColor: Bool = false,
         harmonicKeyRoot: Int = 0,
         pitchBars: PitchBarsData? = nil,
@@ -73,8 +73,8 @@ enum ScoreExporter {
                     pixelsPerSecond: pixelsPerSecond,
                     spectrogram: spectrogram,
                     objectVisibility: objectVisibility,
-                    visibleFamilies: visibleFamilies,
                     showNashville: showNashville,
+                    nashvilleStrip: nashvilleStrip,
                     showHarmonicColor: showHarmonicColor,
                     harmonicKeyRoot: harmonicKeyRoot,
                     pitchBars: pitchBars
@@ -86,8 +86,8 @@ enum ScoreExporter {
                     pixelsPerSecond: pixelsPerSecond,
                     spectrogram: spectrogram,
                     objectVisibility: objectVisibility,
-                    visibleFamilies: visibleFamilies,
                     showNashville: showNashville,
+                    nashvilleStrip: nashvilleStrip,
                     showHarmonicColor: showHarmonicColor,
                     harmonicKeyRoot: harmonicKeyRoot,
                     pitchBars: pitchBars
@@ -99,8 +99,8 @@ enum ScoreExporter {
                     pixelsPerSecond: pixelsPerSecond,
                     spectrogram: spectrogram,
                     objectVisibility: objectVisibility,
-                    visibleFamilies: visibleFamilies,
                     showNashville: showNashville,
+                    nashvilleStrip: nashvilleStrip,
                     showHarmonicColor: showHarmonicColor,
                     harmonicKeyRoot: harmonicKeyRoot
                 )
@@ -118,8 +118,8 @@ enum ScoreExporter {
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
         objectVisibility: Double,
-        visibleFamilies: Set<InstrumentFamily>,
         showNashville: Bool,
+        nashvilleStrip: NashvilleStripData?,
         showHarmonicColor: Bool,
         harmonicKeyRoot: Int,
         pitchBars: PitchBarsData?
@@ -129,8 +129,8 @@ enum ScoreExporter {
             pixelsPerSecond: max(pixelsPerSecond, 24),
             spectrogram: spectrogram,
             objectVisibility: objectVisibility,
-            visibleFamilies: visibleFamilies,
             showNashville: showNashville,
+            nashvilleStrip: nashvilleStrip,
             showHarmonicColor: showHarmonicColor,
             harmonicKeyRoot: harmonicKeyRoot,
             pitchBars: pitchBars
@@ -145,8 +145,8 @@ enum ScoreExporter {
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
         objectVisibility: Double,
-        visibleFamilies: Set<InstrumentFamily>,
         showNashville: Bool,
+        nashvilleStrip: NashvilleStripData?,
         showHarmonicColor: Bool,
         harmonicKeyRoot: Int,
         pitchBars: PitchBarsData?
@@ -157,8 +157,8 @@ enum ScoreExporter {
                 pixelsPerSecond: pixelsPerSecond,
                 spectrogram: spectrogram,
                 objectVisibility: objectVisibility,
-                visibleFamilies: visibleFamilies,
                 showNashville: showNashville,
+                nashvilleStrip: nashvilleStrip,
                 showHarmonicColor: showHarmonicColor,
                 harmonicKeyRoot: harmonicKeyRoot,
                 pitchBars: pitchBars
@@ -180,8 +180,8 @@ enum ScoreExporter {
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
         objectVisibility: Double,
-        visibleFamilies: Set<InstrumentFamily>,
         showNashville: Bool,
+        nashvilleStrip: NashvilleStripData?,
         showHarmonicColor: Bool,
         harmonicKeyRoot: Int,
         pitchBars: PitchBarsData?
@@ -192,8 +192,8 @@ enum ScoreExporter {
                 pixelsPerSecond: pixelsPerSecond,
                 spectrogram: spectrogram,
                 objectVisibility: objectVisibility,
-                visibleFamilies: visibleFamilies,
                 showNashville: showNashville,
+                nashvilleStrip: nashvilleStrip,
                 showHarmonicColor: showHarmonicColor,
                 harmonicKeyRoot: harmonicKeyRoot,
                 pitchBars: pitchBars
@@ -222,8 +222,8 @@ enum ScoreExporter {
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
         objectVisibility: Double,
-        visibleFamilies: Set<InstrumentFamily>,
         showNashville: Bool,
+        nashvilleStrip: NashvilleStripData?,
         showHarmonicColor: Bool,
         harmonicKeyRoot: Int
     ) throws {
@@ -232,7 +232,7 @@ enum ScoreExporter {
             pixelsPerSecond: max(pixelsPerSecond, 24),
             spectrogram: spectrogram,
             objectVisibility: objectVisibility,
-            visibleFamilies: visibleFamilies,
+            nashvilleStrip: nashvilleStrip,
             showNashville: showNashville,
             showHarmonicColor: showHarmonicColor,
             harmonicKeyRoot: harmonicKeyRoot
@@ -250,6 +250,7 @@ enum ScoreSVGBuilder {
     private static let fieldStripHeight: CGFloat = 22
     private static let envelopeHeight: CGFloat = 70
     private static let rulerHeight: CGFloat = 24
+    private static let nashvilleStripHeight: CGFloat = 40
     private static let bracketHeight: CGFloat = 28
     private static let pad: CGFloat = 16
 
@@ -258,15 +259,17 @@ enum ScoreSVGBuilder {
         pixelsPerSecond: CGFloat,
         spectrogram: SpectrogramData?,
         objectVisibility: Double,
-        visibleFamilies: Set<InstrumentFamily> = Set(InstrumentFamily.allCases),
+        nashvilleStrip: NashvilleStripData? = nil,
         showNashville: Bool = false,
         showHarmonicColor: Bool = false,
         harmonicKeyRoot: Int = 0
     ) -> String {
+        let activeNashvilleHeight: CGFloat = nashvilleStrip == nil ? 0 : nashvilleStripHeight
         let canvasW = max(CGFloat(score.duration) * pixelsPerSecond + 80, 600)
         let objectH = CGFloat(laneCount) * laneHeight
-        let objectTop = rulerHeight + fieldStripHeight
-        let canvasH = rulerHeight + fieldStripHeight + objectH + envelopeHeight + bracketHeight + 16
+        let fieldStripY = rulerHeight + activeNashvilleHeight
+        let objectTop = rulerHeight + activeNashvilleHeight + fieldStripHeight
+        let canvasH = rulerHeight + activeNashvilleHeight + fieldStripHeight + objectH + envelopeHeight + bracketHeight + 16
         let titleH: CGFloat = 28
         let totalW = canvasW + pad * 2
         let totalH = canvasH + pad * 2 + titleH
@@ -279,11 +282,10 @@ enum ScoreSVGBuilder {
                 .replacingOccurrences(of: "\"", with: "&quot;")
         }
 
-        let visible = score.objects.filter { obj in
-            guard visibleFamilies.contains(obj.family) else { return false }
+        let visible = score.objects.filter {
             if objectVisibility <= 0.001 { return false }
             if objectVisibility >= 0.999 { return true }
-            return obj.rmsEnergy + 1e-6 >= (1.0 - objectVisibility)
+            return $0.rmsEnergy + 1e-6 >= (1.0 - objectVisibility)
         }
 
         var out: [String] = []
@@ -349,16 +351,44 @@ enum ScoreSVGBuilder {
             t += 5
         }
 
+        // Nashville strip
+        if let nashvilleStrip {
+            let stripY = oy + rulerHeight
+            out.append(
+                "<rect x=\"\(fmt(ox))\" y=\"\(fmt(stripY))\" width=\"\(fmt(canvasW))\" " +
+                "height=\"\(fmt(nashvilleStripHeight))\" fill=\"#FFA50014\"/>"
+            )
+            for seg in nashvilleStrip.segments {
+                let sx = ox + x(seg.start)
+                let sw = max(18, x(seg.end) - x(seg.start))
+                let color = HarmonicColoring.hex(pitchClass: seg.pitchClass, keyRoot: nashvilleStrip.keyRoot)
+                out.append(
+                    "<rect x=\"\(fmt(sx))\" y=\"\(fmt(stripY + 3))\" width=\"\(fmt(sw))\" " +
+                    "height=\"\(fmt(nashvilleStripHeight - 6))\" rx=\"4\" fill=\"\(color)\" opacity=\"0.85\"/>"
+                )
+                out.append(
+                    "<text x=\"\(fmt(sx + sw / 2))\" y=\"\(fmt(stripY + nashvilleStripHeight / 2 + 5))\" " +
+                    "text-anchor=\"middle\" font-family=\"Helvetica, Arial, sans-serif\" font-size=\"14\" " +
+                    "font-weight=\"700\" fill=\"#fff\">\(esc(seg.number))</text>"
+                )
+            }
+            out.append(
+                "<text x=\"\(fmt(ox + 10))\" y=\"\(fmt(stripY + 10))\" " +
+                "font-family=\"Helvetica, Arial, sans-serif\" font-size=\"8\" font-weight=\"600\" fill=\"#888\">" +
+                "Nashville · \(esc(nashvilleStrip.keyLabel))</text>"
+            )
+        }
+
         // Field strip labels
         for field in score.timeFields {
             let w = max(20, x(field.end) - x(field.start))
             out.append(
-                "<rect x=\"\(fmt(ox + x(field.start)))\" y=\"\(fmt(oy + rulerHeight + 2))\" " +
+                "<rect x=\"\(fmt(ox + x(field.start)))\" y=\"\(fmt(oy + fieldStripY + 2))\" " +
                 "width=\"\(fmt(w))\" height=\"\(fmt(fieldStripHeight - 4))\" " +
                 "rx=\"3\" fill=\"\(field.colorHex)\" opacity=\"0.85\" stroke=\"#00000040\"/>"
             )
             out.append(
-                "<text x=\"\(fmt(ox + x(field.start) + 6))\" y=\"\(fmt(oy + rulerHeight + 15))\" " +
+                "<text x=\"\(fmt(ox + x(field.start) + 6))\" y=\"\(fmt(oy + fieldStripY + 15))\" " +
                 "font-family=\"Helvetica, Arial, sans-serif\" font-size=\"10\" font-weight=\"600\" fill=\"#222\">" +
                 "\(esc(field.name))</text>"
             )
@@ -382,42 +412,29 @@ enum ScoreSVGBuilder {
                 if showHarmonicColor, obj.pitchClass >= 0 {
                     return HarmonicColoring.hex(pitchClass: obj.pitchClass, keyRoot: harmonicKeyRoot)
                 }
-                return obj.family.colorHex
+                return "#111111"
             }()
             out.append("<g transform=\"translate(\(fmt(px)),\(fmt(py)))\">")
-            // Family badge
             out.append(
-                "<rect x=\"0\" y=\"4\" width=\"12\" height=\"12\" rx=\"6\" fill=\"\(obj.family.colorHex)\"/>"
-            )
-            out.append(
-                "<text x=\"6\" y=\"13\" text-anchor=\"middle\" " +
-                "font-family=\"Helvetica, Arial, sans-serif\" font-size=\"8\" font-weight=\"700\" fill=\"#fff\">" +
-                "\(esc(obj.family.shortSV))</text>"
-            )
-            out.append(
-                "<text x=\"16\" y=\"14\" font-family=\"Menlo, monospace\" font-size=\"11\" " +
+                "<text x=\"0\" y=\"14\" font-family=\"Menlo, monospace\" font-size=\"11\" " +
                 "font-weight=\"700\" fill=\"\(ink)\">\(esc(obj.label))</text>"
             )
             let glyphX: CGFloat
             if showNashville, !obj.nashville.isEmpty {
                 out.append(
-                    "<text x=\"30\" y=\"14\" font-family=\"Helvetica, Arial, sans-serif\" font-size=\"10\" " +
+                    "<text x=\"14\" y=\"14\" font-family=\"Helvetica, Arial, sans-serif\" font-size=\"10\" " +
                     "font-weight=\"600\" fill=\"\(ink)\">\(esc(obj.nashville))</text>"
                 )
-                glyphX = 44
+                glyphX = 28
             } else {
-                glyphX = 30
+                glyphX = 14
             }
             out.append(contentsOf: symbolSVG(kind: obj.symbol, filled: obj.filled, x: glyphX, y: 2, color: ink))
             if w > 48 {
                 let lineY: CGFloat = 14
                 let x0: CGFloat = glyphX + 20
                 let x1 = w - 2
-                let dash = obj.filled
-                    ? (obj.family.durationDash.isEmpty
-                        ? ""
-                        : " stroke-dasharray=\"\(obj.family.durationDash.map { fmt($0) }.joined(separator: " "))\"")
-                    : " stroke-dasharray=\"3 2\""
+                let dash = obj.filled ? "" : " stroke-dasharray=\"3 2\""
                 out.append(
                     "<line x1=\"\(fmt(x0))\" y1=\"\(fmt(lineY))\" x2=\"\(fmt(x1))\" y2=\"\(fmt(lineY))\" " +
                     "stroke=\"\(ink)\" stroke-width=\"\(obj.filled ? "1.5" : "1")\"\(dash)/>"
