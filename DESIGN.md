@@ -16,6 +16,7 @@
 | **5** | Pitch/harmonicitet (F₀, tonart, harmonic coloring) | Klar |
 | **5b** | Pitch Bars (MAM-inspirerat) | Klar |
 | **6** | MusicEyes-läge (separat) | Klar |
+| **7** | MAM Overview + Bars/Balls-väljare | Klar |
 
 ## Auto-analys (2b)
 
@@ -70,6 +71,12 @@
   - Kommande objekt lyfts (opacity/skala); passerade bleks
 - Ingen palett/inspector; samma score-modell som Viewer
 - Zoom bumpas något vid byte till Eyes
+
+## Skiva 7 — MAM Overview + renderers
+
+- Toggle **Overview**: mini-karta över hela stycket (fält + objekt), gul “nu”-ruta (±4 s), klick/dra = seek
+- **Pitch** + väljare **Bars / Balls** (MAM-inspirerat): rektanglar vs cirklar på F₀-planet
+- Harmonic coloring gäller båda formerna
 
 Princip: en **testbar redigeringsloop** per skiva. Inte allt på en gång.
 

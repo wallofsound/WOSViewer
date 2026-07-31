@@ -45,6 +45,8 @@ struct ScoreEditorView: View {
     @State private var showSpectrogram = true
     @State private var showHarmonicColor = true
     @State private var showPitchBars = true
+    @State private var pitchRenderer: PitchRendererStyle = .bars
+    @State private var showOverview = true
     @State private var didEnrichEnergies = false
     @StateObject private var player = ScoreAudioPlayer()
     @FocusState private var canvasFocused: Bool
@@ -142,6 +144,7 @@ struct ScoreEditorView: View {
             showHarmonicColor: showHarmonicColor,
             harmonicKeyRoot: keyRootForColor,
             pitchBars: showPitchBars ? pitchBarsData : nil,
+            pitchRenderer: pitchRenderer,
             playheadTime: player.hasAudio ? player.currentTime : nil,
             lookAheadSeconds: isEyes ? 5.0 : 0,
             onSeek: { t in
@@ -236,6 +239,23 @@ struct ScoreEditorView: View {
                 .onChange(of: featureSeries?.count) { _, _ in
                     didEnrichEnergies = false
                     enrichEnergiesIfNeeded()
+                }
+
+                if showOverview {
+                    Divider()
+                    ScoreOverviewStrip(
+                        score: score,
+                        playheadTime: player.hasAudio ? player.currentTime : 0,
+                        objectVisibility: objectVisibility,
+                        showHarmonicColor: showHarmonicColor,
+                        harmonicKeyRoot: keyRootForColor,
+                        onSeek: { t in
+                            player.seek(to: t, duration: score.duration)
+                        }
+                    )
+                    .frame(height: 52)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
                 }
             }
 
@@ -409,11 +429,26 @@ struct ScoreEditorView: View {
                     .help("Malinowski harmonic coloring: blått = tonika, mot rött = dominantriktning (kvintcirkel).")
                     .disabled(pitch == nil)
 
-                Toggle("Pitch bars", isOn: $showPitchBars)
+                Toggle("Pitch", isOn: $showPitchBars)
                     .toggleStyle(.checkbox)
                     .fixedSize()
-                    .help("F₀ som piano-roll under objektplanen, färgat med harmonic coloring.")
+                    .help("F₀ under objektplanen (MAM-inspirerat).")
                     .disabled(pitchBarsData == nil)
+
+                Picker("", selection: $pitchRenderer) {
+                    ForEach(PitchRendererStyle.allCases) { style in
+                        Text(style.label).tag(style)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 72)
+                .disabled(!showPitchBars || pitchBarsData == nil)
+                .help("Bars = piano-roll · Balls = toncirklar (MAM).")
+
+                Toggle("Overview", isOn: $showOverview)
+                    .toggleStyle(.checkbox)
+                    .fixedSize()
+                    .help("Mini-karta över hela stycket. Klicka för att hoppa. Gul ruta ≈ nu ±4 s.")
 
                 Spacer(minLength: 8)
 
@@ -518,6 +553,7 @@ struct ScoreExportView: View {
                 showHarmonicColor: showHarmonicColor,
                 harmonicKeyRoot: harmonicKeyRoot,
                 pitchBars: pitchBars,
+                pitchRenderer: .bars,
                 playheadTime: nil,
                 onSeek: nil,
                 onChangeObject: { _ in },
@@ -789,6 +825,7 @@ struct ScoreCanvasView: View {
     var showHarmonicColor: Bool = false
     var harmonicKeyRoot: Int = 0
     var pitchBars: PitchBarsData? = nil
+    var pitchRenderer: PitchRendererStyle = .bars
     var playheadTime: Double?
     /// MusicEyes: sekunder framåt som betonas (0 = av).
     var lookAheadSeconds: Double = 0
@@ -954,6 +991,7 @@ struct ScoreCanvasView: View {
             if let pitchBars {
                 PitchBarsCanvasView(
                     data: pitchBars,
+                    style: pitchRenderer,
                     pixelsPerSecond: pixelsPerSecond,
                     width: canvasWidth
                 )
@@ -1232,10 +1270,11 @@ private struct MusicEyesFollowView<Content: View>: View {
     }
 }
 
-// MARK: - Pitch bars (F₀ piano-roll)
+// MARK: - Pitch plane (MAM Bars / Balls)
 
 private struct PitchBarsCanvasView: View {
     let data: PitchBarsData
+    var style: PitchRendererStyle = .bars
     var pixelsPerSecond: CGFloat
     var width: CGFloat
     var minMIDI: Double = 36
@@ -1245,7 +1284,6 @@ private struct PitchBarsCanvasView: View {
         ZStack(alignment: .topLeading) {
             Rectangle()
                 .fill(Color(white: 0.97))
-            // Soft staff lines (octaves)
             ForEach([48.0, 60.0, 72.0], id: \.self) { midi in
                 let y = yPos(midi: midi)
                 Path { p in
@@ -1273,11 +1311,18 @@ private struct PitchBarsCanvasView: View {
                         keyRoot: data.keyRoot,
                         harmonicity: harm
                     ) ?? Color.gray.opacity(0.4)
-                    let rect = CGRect(x: x, y: y - 1.6, width: barW, height: 3.2)
-                    context.fill(Path(roundedRect: rect, cornerRadius: 1), with: .color(color.opacity(0.9)))
+                    switch style {
+                    case .bars:
+                        let rect = CGRect(x: x, y: y - 1.6, width: barW, height: 3.2)
+                        context.fill(Path(roundedRect: rect, cornerRadius: 1), with: .color(color.opacity(0.9)))
+                    case .balls:
+                        let r = 2.2 + CGFloat(min(1, max(0, harm))) * 2.4
+                        let rect = CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2)
+                        context.fill(Path(ellipseIn: rect), with: .color(color.opacity(0.88)))
+                    }
                 }
             }
-            Text("Pitch bars (F₀)")
+            Text(style == .balls ? "Pitch balls (F₀)" : "Pitch bars (F₀)")
                 .font(.system(size: 8))
                 .foregroundStyle(.secondary)
                 .padding(.leading, 10)
@@ -1289,6 +1334,100 @@ private struct PitchBarsCanvasView: View {
         let h: CGFloat = 72
         let norm = (midi - minMIDI) / (maxMIDI - minMIDI)
         return h - CGFloat(norm) * (h - 6) - 3
+    }
+}
+
+// MARK: - Overview mini-map (whole piece)
+
+private struct ScoreOverviewStrip: View {
+    let score: ScoreDocument
+    var playheadTime: Double
+    var objectVisibility: Double
+    var showHarmonicColor: Bool
+    var harmonicKeyRoot: Int
+    var windowRadius: Double = 4
+    var onSeek: (Double) -> Void
+
+    private var visibleObjects: [ScoreObject] {
+        score.objects.filter {
+            if objectVisibility <= 0.001 { return false }
+            if objectVisibility >= 0.999 { return true }
+            return $0.rmsEnergy + 1e-6 >= (1.0 - objectVisibility)
+        }
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = max(1, geo.size.width - 16)
+            let h = geo.size.height
+            let dur = max(score.duration, 0.1)
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color(nsColor: .controlBackgroundColor))
+                RoundedRectangle(cornerRadius: 5)
+                    .stroke(Color.secondary.opacity(0.25), lineWidth: 1)
+
+                // Time-field washes
+                ForEach(score.timeFields) { field in
+                    let x0 = 8 + CGFloat(field.start / dur) * w
+                    let bw = max(1, CGFloat((field.end - field.start) / dur) * w)
+                    Rectangle()
+                        .fill(field.color.opacity(0.35))
+                        .frame(width: bw, height: h - 8)
+                        .offset(x: x0, y: 4)
+                }
+
+                // Objects
+                ForEach(visibleObjects) { obj in
+                    let x0 = 8 + CGFloat(obj.start / dur) * w
+                    let bw = max(2, CGFloat(obj.duration / dur) * w)
+                    let laneY = 6 + CGFloat(obj.lane) * ((h - 14) / 3)
+                    let color: Color = {
+                        if showHarmonicColor, obj.pitchClass >= 0 {
+                            return HarmonicColoring.color(pitchClass: obj.pitchClass, keyRoot: harmonicKeyRoot)
+                        }
+                        return Color.primary.opacity(0.55)
+                    }()
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(color.opacity(0.85))
+                        .frame(width: bw, height: 5)
+                        .offset(x: x0, y: laneY)
+                }
+
+                // Now window (± windowRadius)
+                let winStart = max(0, playheadTime - windowRadius)
+                let winEnd = min(dur, playheadTime + windowRadius)
+                let wx = 8 + CGFloat(winStart / dur) * w
+                let ww = max(3, CGFloat((winEnd - winStart) / dur) * w)
+                RoundedRectangle(cornerRadius: 2)
+                    .stroke(Color.orange.opacity(0.85), lineWidth: 1.5)
+                    .background(RoundedRectangle(cornerRadius: 2).fill(Color.orange.opacity(0.12)))
+                    .frame(width: ww, height: h - 6)
+                    .offset(x: wx, y: 3)
+
+                // Playhead
+                let px = 8 + CGFloat(playheadTime / dur) * w
+                Rectangle()
+                    .fill(Color.orange)
+                    .frame(width: 2, height: h - 4)
+                    .offset(x: px, y: 2)
+
+                Text("Overview")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 12)
+                    .padding(.top, 2)
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        let t = Double((value.location.x - 8) / w) * dur
+                        onSeek(min(max(0, t), max(0, dur - 0.01)))
+                    }
+            )
+            .help("Klicka eller dra för att sätta playhead. Gul ruta = ungefär nu ±\(Int(windowRadius)) s.")
+        }
     }
 }
 

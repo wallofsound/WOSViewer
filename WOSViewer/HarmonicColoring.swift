@@ -98,3 +98,18 @@ struct PitchBarsData {
         )
     }
 }
+
+/// MAM-inspired pitch plane shape (Bars ≈ piano-roll, Balls ≈ note spheres).
+enum PitchRendererStyle: String, CaseIterable, Identifiable {
+    case bars
+    case balls
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .bars: return "Bars"
+        case .balls: return "Balls"
+        }
+    }
+}
