@@ -126,6 +126,7 @@ final class AnalysisViewModel: ObservableObject {
 
 struct ContentView: View {
     @StateObject private var model = AnalysisViewModel()
+    @State private var eyesImmersive = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -140,14 +141,16 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let result = model.result {
                 VStack(spacing: 0) {
-                    Picker("Vy", selection: $model.selectedTab) {
-                        ForEach(AnalysisViewModel.MainTab.allCases) { tab in
-                            Text(tab.rawValue).tag(tab)
+                    if !eyesImmersive {
+                        Picker("Vy", selection: $model.selectedTab) {
+                            ForEach(AnalysisViewModel.MainTab.allCases) { tab in
+                                Text(tab.rawValue).tag(tab)
+                            }
                         }
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
                     }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
 
                     switch model.selectedTab {
                     case .features:
@@ -166,7 +169,8 @@ struct ContentView: View {
                             spectrogram: result.spectrogram,
                             pitch: result.pitch,
                             onSave: { _ in model.saveScore() },
-                            onStatus: { model.statusMessage = $0 }
+                            onStatus: { model.statusMessage = $0 },
+                            onEyesModeChange: { eyesImmersive = $0 }
                         )
                     }
                 }

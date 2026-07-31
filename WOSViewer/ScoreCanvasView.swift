@@ -33,6 +33,8 @@ struct ScoreEditorView: View {
     var pitch: PitchAnalysis? = nil
     var onSave: (ScoreDocument) -> Void
     var onStatus: ((String) -> Void)? = nil
+    /// När true döljer ContentView Features/Score-väljaren (immersiv Eyes).
+    var onEyesModeChange: ((Bool) -> Void)? = nil
 
     @State private var selectedSymbol: ScoreSymbolKind = .pitchedSustained
     @State private var selectedFormShape: DynamicForm.Shape = .crescendo
@@ -48,11 +50,16 @@ struct ScoreEditorView: View {
     @State private var pitchRenderer: PitchRendererStyle = .bars
     @State private var showOverview = true
     @State private var didEnrichEnergies = false
+    /// Zoom att återställa när man lämnar Eyes.
+    @State private var zoomBeforeEyes: CGFloat?
     @StateObject private var player = ScoreAudioPlayer()
     @FocusState private var canvasFocused: Bool
 
     private var isEditing: Bool { presentation == .edit }
     private var isEyes: Bool { presentation == .eyes }
+
+    /// Högre zoom i Eyes = “mindre tidsfönster”, mer animation.
+    private var eyesPixelsPerSecond: CGFloat { max(pixelsPerSecond, 56) }
 
     private var pitchBarsData: PitchBarsData? {
         guard let pitch,
@@ -135,18 +142,19 @@ struct ScoreEditorView: View {
             placementTool: $placementTool,
             selectedSymbol: selectedSymbol,
             selectedFormShape: selectedFormShape,
-            pixelsPerSecond: pixelsPerSecond,
+            pixelsPerSecond: isEyes ? eyesPixelsPerSecond : pixelsPerSecond,
             objectVisibility: objectVisibility,
             isInteracting: $isInteracting,
             presentation: presentation,
             spectrogram: spectrogram,
-            showSpectrogram: showSpectrogram,
+            showSpectrogram: isEyes ? false : showSpectrogram,
             showHarmonicColor: showHarmonicColor,
             harmonicKeyRoot: keyRootForColor,
             pitchBars: showPitchBars ? pitchBarsData : nil,
             pitchRenderer: pitchRenderer,
-            playheadTime: player.hasAudio ? player.currentTime : nil,
-            lookAheadSeconds: isEyes ? 5.0 : 0,
+            // Eyes: fast NU-linje i scenen — göm flyttande playhead på canvas.
+            playheadTime: isEyes ? nil : (player.hasAudio ? player.currentTime : nil),
+            lookAheadSeconds: isEyes ? 6.0 : 0,
             onSeek: { t in
                 player.seek(to: t, duration: score.duration)
             },
@@ -206,16 +214,22 @@ struct ScoreEditorView: View {
             }
 
             VStack(spacing: 0) {
-                scoreToolbar
+                if isEyes {
+                    eyesChrome
+                } else {
+                    scoreToolbar
+                }
                 Divider()
                 Group {
                     if isEyes {
-                        MusicEyesFollowView(
+                        MusicEyesStageView(
                             playheadTime: player.hasAudio ? player.currentTime : 0,
-                            pixelsPerSecond: pixelsPerSecond
+                            pixelsPerSecond: eyesPixelsPerSecond,
+                            onSeek: { t in
+                                player.seek(to: t, duration: score.duration)
+                            }
                         ) {
                             scoreCanvas
-                                .padding(.vertical, 12)
                         }
                     } else {
                         ScrollView([.horizontal, .vertical]) {
@@ -225,7 +239,8 @@ struct ScoreEditorView: View {
                         .scrollDisabled(isInteracting)
                     }
                 }
-                .background(Color(nsColor: .windowBackgroundColor))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(isEyes ? Color.black.opacity(0.92) : Color(nsColor: .windowBackgroundColor))
                 .focusable()
                 .focused($canvasFocused)
                 .onDeleteCommand(perform: deleteSelected)
@@ -241,7 +256,7 @@ struct ScoreEditorView: View {
                     enrichEnergiesIfNeeded()
                 }
 
-                if showOverview {
+                if showOverview, !isEyes {
                     Divider()
                     ScoreOverviewStrip(
                         score: score,
@@ -272,8 +287,60 @@ struct ScoreEditorView: View {
                 .frame(width: 240)
             }
         }
-        .onAppear { canvasFocused = true }
-        .onDisappear { player.stop() }
+        .onAppear {
+            canvasFocused = true
+            onEyesModeChange?(isEyes)
+        }
+        .onDisappear {
+            onEyesModeChange?(false)
+            player.stop()
+        }
+        .onChange(of: presentation) { _, mode in
+            enterOrLeaveEyes(mode)
+        }
+    }
+
+    private func enterOrLeaveEyes(_ mode: ScorePresentationMode) {
+        placementTool = .none
+        selection = .none
+        onEyesModeChange?(mode == .eyes)
+        if mode == .eyes {
+            if zoomBeforeEyes == nil { zoomBeforeEyes = pixelsPerSecond }
+            pixelsPerSecond = max(pixelsPerSecond, 56)
+            onStatus?("Eyes: tidslinjen rullar förbi NU. Tryck play.")
+        } else if let z = zoomBeforeEyes {
+            pixelsPerSecond = z
+            zoomBeforeEyes = nil
+        }
+    }
+
+    /// Minimal chrome för immersiv Eyes (hela score-ytan).
+    private var eyesChrome: some View {
+        HStack(spacing: 14) {
+            Text(score.sourceName)
+                .font(.headline)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .foregroundStyle(.primary)
+
+            if let pitch, pitch.keyConfidence >= 0.35 {
+                Text(pitch.keyLabel)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 8)
+
+            playbackControls
+
+            Button("Lämna Eyes") {
+                presentation = .view
+            }
+            .help("Tillbaka till Viewer (eller välj Edit).")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.bar)
     }
 
     private func playSelectedSegment() {
@@ -364,17 +431,8 @@ struct ScoreEditorView: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 220)
-                .help("Edit = redigera · Viewer = rent partitur · Eyes = lyssnarläge (förväntan kring playhead)")
-                .onChange(of: presentation) { _, mode in
-                    if mode != .edit {
-                        placementTool = .none
-                        selection = .none
-                    }
-                    if mode == .eyes {
-                        pixelsPerSecond = max(pixelsPerSecond, 36)
-                        onStatus?("Eyes-läge: playhead i fokus, kommande objekt lyfts fram. Tryck play.")
-                    }
-                }
+                .help("Edit = redigera · Viewer = rent partitur · Eyes = immersivt lyssnarläge")
+                // presentation byts via enterOrLeaveEyes i body.onChange
 
                 Text("\(visibleObjects.count)/\(score.objects.count) obj · \(score.timeFields.count) fält · \(score.dynamicForms.count) former")
                     .font(.caption)
@@ -1245,27 +1303,85 @@ private struct PlayheadView: View {
     }
 }
 
-// MARK: - MusicEyes follow viewport (playhead stays in focus)
+// MARK: - MusicEyes stage (timeline scrolls past fixed NOW)
 
-private struct MusicEyesFollowView<Content: View>: View {
+private struct MusicEyesStageView<Content: View>: View {
     var playheadTime: Double
     var pixelsPerSecond: CGFloat
-    /// Horizontal fraction where the playhead sits (0…1 from left).
-    var focusFraction: CGFloat = 0.30
+    /// Where NOW sits in the viewport (0…1 from left). Past scrolls left of this.
+    var focusFraction: CGFloat = 0.40
+    var onSeek: (Double) -> Void
     @ViewBuilder var content: () -> Content
+
+    @State private var dragOriginTime: Double?
 
     var body: some View {
         GeometryReader { geo in
+            let focusX = geo.size.width * focusFraction
             let playX = CGFloat(playheadTime) * pixelsPerSecond + 8
-            let target = geo.size.width * focusFraction
-            let offsetX = target - playX
-            ScrollView(.vertical) {
+            let offsetX = focusX - playX
+
+            ZStack {
+                Color.black
+
                 content()
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .shadow(color: .black.opacity(0.45), radius: 18, y: 4)
                     .offset(x: offsetX)
+                    .frame(width: geo.size.width, height: geo.size.height, alignment: .center)
+                    .clipped()
+
+                HStack(spacing: 0) {
+                    LinearGradient(
+                        colors: [Color.black.opacity(0.85), Color.black.opacity(0)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: max(40, geo.size.width * 0.14))
+                    Spacer(minLength: 0)
+                    LinearGradient(
+                        colors: [Color.black.opacity(0), Color.black.opacity(0.75)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: max(48, geo.size.width * 0.20))
+                }
+                .allowsHitTesting(false)
+
+                Rectangle()
+                    .fill(Color.orange)
+                    .frame(width: 3)
+                    .frame(maxHeight: .infinity)
+                    .position(x: focusX, y: geo.size.height / 2)
+                    .shadow(color: .orange.opacity(0.6), radius: 6)
+                    .allowsHitTesting(false)
+
+                Text("NU")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.orange)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Color.black.opacity(0.55)))
+                    .position(x: min(geo.size.width - 28, focusX + 28), y: 22)
+                    .allowsHitTesting(false)
             }
-            .frame(width: geo.size.width, height: geo.size.height)
-            .clipped()
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        if dragOriginTime == nil {
+                            dragOriginTime = playheadTime
+                        }
+                        // Dra tidslinjen åt höger → bakåt i tid (som att greppa partituret).
+                        let dt = Double(value.translation.width / pixelsPerSecond)
+                        onSeek(max(0, (dragOriginTime ?? playheadTime) - dt))
+                    }
+                    .onEnded { _ in
+                        dragOriginTime = nil
+                    }
+            )
+            .help("Tidslinjen rullar förbi NU. Dra för att scrubba. Play startar animationen.")
         }
     }
 }

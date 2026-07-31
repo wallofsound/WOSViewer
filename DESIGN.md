@@ -65,12 +65,12 @@
 ## Skiva 6 — MusicEyes (Eyes)
 
 - Tredje presentation: **Edit · Viewer · Eyes**
-- **Eyes** = lyssnarläge inspirerat av Music:Eyes / MAM NowStretch:
-  - Playhead hålls i fokus (vyn följer uppspelning)
-  - Orange **förväntansband** ~5 s framför nu
-  - Kommande objekt lyfts (opacity/skala); passerade bleks
-- Ingen palett/inspector; samma score-modell som Viewer
-- Zoom bumpas något vid byte till Eyes
+- **Eyes** = immersivt lyssnarläge:
+  - Fyller score-området; Features/Score-väljaren döljs; endast app-toppmeny + tunn Eyes-list (play + Lämna Eyes)
+  - Fast **NU**-linje; tidslinjen **rullar** förbi (högre zoom = mindre tidsfönster)
+  - Vignett/kantfade; spektrogram av i Eyes för klarhet
+  - Kommande objekt lyfts; passerade bleks
+- Overview döljs i Eyes (använd scrub i scenen eller Lämna Eyes)
 
 ## Skiva 7 — MAM Overview + renderers
 
