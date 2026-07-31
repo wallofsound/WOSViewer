@@ -15,7 +15,7 @@
 | **4** | SVG/PDF-export (+ PNG via meny) | Klar |
 | **5** | Pitch/harmonicitet (F₀, tonart, harmonic coloring) | Klar |
 | **5b** | Pitch Bars (MAM-inspirerat) | Klar |
-| **6** | MusicEyes-läge (separat) | Senare |
+| **6** | MusicEyes-läge (separat) | Klar |
 
 ## Auto-analys (2b)
 
@@ -61,6 +61,16 @@
 - **Pitch bars**: F₀-piano-roll under objektplanen med samma färgpalett
 - Toggles i score-raden; PNG/PDF följer; SVG färgar objekt
 
+## Skiva 6 — MusicEyes (Eyes)
+
+- Tredje presentation: **Edit · Viewer · Eyes**
+- **Eyes** = lyssnarläge inspirerat av Music:Eyes / MAM NowStretch:
+  - Playhead hålls i fokus (vyn följer uppspelning)
+  - Orange **förväntansband** ~5 s framför nu
+  - Kommande objekt lyfts (opacity/skala); passerade bleks
+- Ingen palett/inspector; samma score-modell som Viewer
+- Zoom bumpas något vid byte till Eyes
+
 Princip: en **testbar redigeringsloop** per skiva. Inte allt på en gång.
 
 ## Datamodell
@@ -72,4 +82,5 @@ Princip: en **testbar redigeringsloop** per skiva. Inte allt på en gång.
 
 - Thoresen spectromorphology / Parmerud *Les objets obscurs* III  
 - Chan Theme Fabric = separat spår  
-- MusicEyes = skiva 6
+- MusicEyes / Music:Eyes science: anticipation + multisensory listening  
+- MusicEyes = skiva 6 (Eyes-läge)

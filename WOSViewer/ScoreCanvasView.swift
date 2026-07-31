@@ -5,7 +5,10 @@ import UniformTypeIdentifiers
 enum ScorePresentationMode: String, CaseIterable, Identifiable {
     case edit = "Edit"
     case view = "Viewer"
+    case eyes = "Eyes"
     var id: String { rawValue }
+
+    var isListeningMode: Bool { self == .view || self == .eyes }
 }
 
 enum ScoreEditSelection: Hashable {
@@ -47,6 +50,7 @@ struct ScoreEditorView: View {
     @FocusState private var canvasFocused: Bool
 
     private var isEditing: Bool { presentation == .edit }
+    private var isEyes: Bool { presentation == .eyes }
 
     private var pitchBarsData: PitchBarsData? {
         guard let pitch,
@@ -121,6 +125,71 @@ struct ScoreEditorView: View {
         )
     }
 
+    @ViewBuilder
+    private var scoreCanvas: some View {
+        ScoreCanvasView(
+            score: score,
+            selection: $selection,
+            placementTool: $placementTool,
+            selectedSymbol: selectedSymbol,
+            selectedFormShape: selectedFormShape,
+            pixelsPerSecond: pixelsPerSecond,
+            objectVisibility: objectVisibility,
+            isInteracting: $isInteracting,
+            presentation: presentation,
+            spectrogram: spectrogram,
+            showSpectrogram: showSpectrogram,
+            showHarmonicColor: showHarmonicColor,
+            harmonicKeyRoot: keyRootForColor,
+            pitchBars: showPitchBars ? pitchBarsData : nil,
+            playheadTime: player.hasAudio ? player.currentTime : nil,
+            lookAheadSeconds: isEyes ? 5.0 : 0,
+            onSeek: { t in
+                player.seek(to: t, duration: score.duration)
+            },
+            onChangeObject: { updated in
+                guard let idx = score.objects.firstIndex(where: { $0.id == updated.id }) else { return }
+                score.objects[idx] = updated
+            },
+            onChangeField: { updated in
+                guard let idx = score.timeFields.firstIndex(where: { $0.id == updated.id }) else { return }
+                score.timeFields[idx] = updated
+            },
+            onChangeForm: { updated in
+                guard let idx = score.dynamicForms.firstIndex(where: { $0.id == updated.id }) else { return }
+                score.dynamicForms[idx] = updated
+            },
+            onPlaceObject: { obj in
+                var placed = obj
+                if let series = featureSeries {
+                    placed.rmsEnergy = ScoreBuilder.rmsEnergy(
+                        start: placed.start,
+                        end: placed.end,
+                        from: series
+                    )
+                }
+                score.objects.append(placed)
+                score.objects.sort { $0.start < $1.start }
+                selection = .object(placed.id)
+            },
+            onPlaceField: { field in
+                score.timeFields.append(field)
+                score.timeFields.sort { $0.start < $1.start }
+                selection = .timeField(field.id)
+            },
+            onPlaceForm: { form in
+                score.dynamicForms.append(form)
+                score.dynamicForms.sort { $0.start < $1.start }
+                selection = .dynamicForm(form.id)
+            },
+            onInteractionEnded: {
+                score.objects.sort { $0.start < $1.start }
+                score.timeFields.sort { $0.start < $1.start }
+                score.dynamicForms.sort { $0.start < $1.start }
+            }
+        )
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             if isEditing {
@@ -136,70 +205,23 @@ struct ScoreEditorView: View {
             VStack(spacing: 0) {
                 scoreToolbar
                 Divider()
-                ScrollView([.horizontal, .vertical]) {
-                    ScoreCanvasView(
-                        score: score,
-                        selection: $selection,
-                        placementTool: $placementTool,
-                        selectedSymbol: selectedSymbol,
-                        selectedFormShape: selectedFormShape,
-                        pixelsPerSecond: pixelsPerSecond,
-                        objectVisibility: objectVisibility,
-                        isInteracting: $isInteracting,
-                        presentation: presentation,
-                        spectrogram: spectrogram,
-                        showSpectrogram: showSpectrogram,
-                        showHarmonicColor: showHarmonicColor,
-                        harmonicKeyRoot: keyRootForColor,
-                        pitchBars: showPitchBars ? pitchBarsData : nil,
-                        playheadTime: player.hasAudio ? player.currentTime : nil,
-                        onSeek: { t in
-                            player.seek(to: t, duration: score.duration)
-                        },
-                        onChangeObject: { updated in
-                            guard let idx = score.objects.firstIndex(where: { $0.id == updated.id }) else { return }
-                            score.objects[idx] = updated
-                        },
-                        onChangeField: { updated in
-                            guard let idx = score.timeFields.firstIndex(where: { $0.id == updated.id }) else { return }
-                            score.timeFields[idx] = updated
-                        },
-                        onChangeForm: { updated in
-                            guard let idx = score.dynamicForms.firstIndex(where: { $0.id == updated.id }) else { return }
-                            score.dynamicForms[idx] = updated
-                        },
-                        onPlaceObject: { obj in
-                            var placed = obj
-                            if let series = featureSeries {
-                                placed.rmsEnergy = ScoreBuilder.rmsEnergy(
-                                    start: placed.start,
-                                    end: placed.end,
-                                    from: series
-                                )
-                            }
-                            score.objects.append(placed)
-                            score.objects.sort { $0.start < $1.start }
-                            selection = .object(placed.id)
-                        },
-                        onPlaceField: { field in
-                            score.timeFields.append(field)
-                            score.timeFields.sort { $0.start < $1.start }
-                            selection = .timeField(field.id)
-                        },
-                        onPlaceForm: { form in
-                            score.dynamicForms.append(form)
-                            score.dynamicForms.sort { $0.start < $1.start }
-                            selection = .dynamicForm(form.id)
-                        },
-                        onInteractionEnded: {
-                            score.objects.sort { $0.start < $1.start }
-                            score.timeFields.sort { $0.start < $1.start }
-                            score.dynamicForms.sort { $0.start < $1.start }
+                Group {
+                    if isEyes {
+                        MusicEyesFollowView(
+                            playheadTime: player.hasAudio ? player.currentTime : 0,
+                            pixelsPerSecond: pixelsPerSecond
+                        ) {
+                            scoreCanvas
+                                .padding(.vertical, 12)
                         }
-                    )
-                    .padding(12)
+                    } else {
+                        ScrollView([.horizontal, .vertical]) {
+                            scoreCanvas
+                                .padding(12)
+                        }
+                        .scrollDisabled(isInteracting)
+                    }
                 }
-                .scrollDisabled(isInteracting)
                 .background(Color(nsColor: .windowBackgroundColor))
                 .focusable()
                 .focused($canvasFocused)
@@ -321,11 +343,16 @@ struct ScoreEditorView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 150)
+                .frame(width: 220)
+                .help("Edit = redigera · Viewer = rent partitur · Eyes = lyssnarläge (förväntan kring playhead)")
                 .onChange(of: presentation) { _, mode in
-                    if mode == .view {
+                    if mode != .edit {
                         placementTool = .none
                         selection = .none
+                    }
+                    if mode == .eyes {
+                        pixelsPerSecond = max(pixelsPerSecond, 36)
+                        onStatus?("Eyes-läge: playhead i fokus, kommande objekt lyfts fram. Tryck play.")
                     }
                 }
 
@@ -589,7 +616,7 @@ struct ScorePaletteView: View {
                         .font(.caption)
                 }
 
-                Text("Edit = rutor/handtag. Viewer = rent partitur. Exportera = PNG/PDF/SVG i Viewer-stil. ⌫ lämnar tidshål.")
+                Text("Edit = rutor/handtag. Viewer = rent partitur. Eyes = lyssnarläge med förväntan. Exportera = PNG/PDF/SVG. ⌫ lämnar tidshål.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -763,6 +790,8 @@ struct ScoreCanvasView: View {
     var harmonicKeyRoot: Int = 0
     var pitchBars: PitchBarsData? = nil
     var playheadTime: Double?
+    /// MusicEyes: sekunder framåt som betonas (0 = av).
+    var lookAheadSeconds: Double = 0
     var onSeek: ((Double) -> Void)? = nil
     var onChangeObject: (ScoreObject) -> Void
     var onChangeField: (TimeField) -> Void
@@ -781,6 +810,7 @@ struct ScoreCanvasView: View {
     private let pitchBarsHeight: CGFloat = 72
 
     private var isEditing: Bool { presentation == .edit }
+    private var isEyes: Bool { presentation == .eyes }
 
     private var activePitchBarsHeight: CGFloat { pitchBars == nil ? 0 : pitchBarsHeight }
 
@@ -831,9 +861,28 @@ struct ScoreCanvasView: View {
             // Background wash for time fields across object lanes
             ForEach(score.timeFields) { field in
                 Rectangle()
-                    .fill(field.color.opacity(presentation == .view ? 0.22 : 0.28))
+                    .fill(field.color.opacity(presentation.isListeningMode ? 0.22 : 0.28))
                     .frame(width: max(2, x(field.end) - x(field.start)), height: objectAreaHeight)
                     .offset(x: x(field.start), y: objectTop)
+                    .allowsHitTesting(false)
+            }
+
+            // MusicEyes anticipation band (now → lookAhead)
+            if isEyes, let now = playheadTime, lookAheadSeconds > 0 {
+                let bandW = max(2, CGFloat(lookAheadSeconds) * pixelsPerSecond)
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.orange.opacity(0.22),
+                                Color.orange.opacity(0.04)
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: bandW, height: objectAreaHeight + activePitchBarsHeight + envelopeHeight)
+                    .offset(x: x(now), y: objectTop)
                     .allowsHitTesting(false)
             }
 
@@ -869,7 +918,7 @@ struct ScoreCanvasView: View {
                     path.move(to: CGPoint(x: 0, y: y))
                     path.addLine(to: CGPoint(x: canvasWidth, y: y))
                 }
-                .stroke(Color.gray.opacity(presentation == .view ? 0.12 : 0.25), lineWidth: 0.5)
+                .stroke(Color.gray.opacity(presentation.isListeningMode ? 0.12 : 0.25), lineWidth: 0.5)
                 .allowsHitTesting(false)
             }
 
@@ -887,6 +936,7 @@ struct ScoreCanvasView: View {
                         guard showHarmonicColor, obj.pitchClass >= 0 else { return nil }
                         return HarmonicColoring.color(pitchClass: obj.pitchClass, keyRoot: harmonicKeyRoot)
                     }(),
+                    eyesOpacity: eyesOpacity(for: obj),
                     onSelect: {
                         guard isEditing else { return }
                         selection = .object(obj.id)
@@ -948,6 +998,7 @@ struct ScoreCanvasView: View {
                     height: fieldStripHeight + objectAreaHeight + activePitchBarsHeight + envelopeHeight,
                     scoreDuration: score.duration,
                     enabled: onSeek != nil,
+                    emphasized: isEyes,
                     onSeek: { newTime in onSeek?(newTime) },
                     onInteractingChanged: { active in
                         isInteracting = active
@@ -1031,6 +1082,20 @@ struct ScoreCanvasView: View {
         CGFloat(time) * pixelsPerSecond + 8
     }
 
+    private func eyesOpacity(for obj: ScoreObject) -> Double {
+        guard isEyes, let now = playheadTime, lookAheadSeconds > 0 else { return 1 }
+        let lookBehind = 1.5
+        if obj.end < now - lookBehind { return 0.14 }
+        if obj.start > now + lookAheadSeconds { return 0.18 }
+        if obj.start <= now && obj.end >= now { return 1 }
+        if obj.start > now {
+            let u = min(1, max(0, (obj.start - now) / lookAheadSeconds))
+            return 0.42 + 0.55 * (1 - u)
+        }
+        let u = min(1, max(0, (now - obj.end) / lookBehind))
+        return 0.35 + 0.35 * (1 - u)
+    }
+
     private func place(at location: CGPoint) {
         let t = max(0, min(score.duration - 0.4, Double((location.x - 8) / pixelsPerSecond)))
         switch placementTool {
@@ -1094,6 +1159,7 @@ private struct PlayheadView: View {
     var height: CGFloat
     var scoreDuration: Double
     var enabled: Bool
+    var emphasized: Bool = false
     var onSeek: (Double) -> Void
     var onInteractingChanged: (Bool) -> Void
 
@@ -1103,12 +1169,17 @@ private struct PlayheadView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
+            if emphasized {
+                Rectangle()
+                    .fill(Color.orange.opacity(0.18))
+                    .frame(width: 10, height: height)
+            }
             Rectangle()
                 .fill(Color.orange)
-                .frame(width: 2, height: height)
+                .frame(width: emphasized ? 3 : 2, height: height)
             Capsule()
                 .fill(Color.orange)
-                .frame(width: 10, height: 14)
+                .frame(width: emphasized ? 12 : 10, height: emphasized ? 16 : 14)
                 .offset(y: -2)
         }
         .frame(width: 16, height: height, alignment: .top)
@@ -1133,6 +1204,31 @@ private struct PlayheadView: View {
         )
         .help(enabled ? "Dra playhead eller linjalen för startposition. Play fortsätter härifrån. Stop återställer till 0." : "")
         .allowsHitTesting(enabled)
+    }
+}
+
+// MARK: - MusicEyes follow viewport (playhead stays in focus)
+
+private struct MusicEyesFollowView<Content: View>: View {
+    var playheadTime: Double
+    var pixelsPerSecond: CGFloat
+    /// Horizontal fraction where the playhead sits (0…1 from left).
+    var focusFraction: CGFloat = 0.30
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        GeometryReader { geo in
+            let playX = CGFloat(playheadTime) * pixelsPerSecond + 8
+            let target = geo.size.width * focusFraction
+            let offsetX = target - playX
+            ScrollView(.vertical) {
+                content()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .offset(x: offsetX)
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .clipped()
+        }
     }
 }
 
@@ -1238,13 +1334,13 @@ private struct TimeFieldCanvasItem: View {
     private enum DragMode { case move, resizeStart, resizeEnd }
 
     private var live: TimeField { draft ?? field }
-    private var width: CGFloat { max(presentation == .view ? 20 : 32, CGFloat(live.end - live.start) * pixelsPerSecond) }
+    private var width: CGFloat { max(presentation == .edit ? 32 : 20, CGFloat(live.end - live.start) * pixelsPerSecond) }
     private var xPos: CGFloat { CGFloat(live.start) * pixelsPerSecond + 8 }
     private var edgeWidth: CGFloat { min(12, max(8, width * 0.18)) }
 
     var body: some View {
         Group {
-            if presentation == .view {
+            if presentation != .edit {
                 Text(live.name)
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.primary.opacity(0.7))
@@ -1345,7 +1441,7 @@ private struct DynamicFormCanvasItem: View {
     private enum DragMode { case move, resizeStart, resizeEnd }
 
     private var live: DynamicForm { draft ?? form }
-    private var width: CGFloat { max(presentation == .view ? 12 : 28, CGFloat(live.end - live.start) * pixelsPerSecond) }
+    private var width: CGFloat { max(presentation == .edit ? 28 : 12, CGFloat(live.end - live.start) * pixelsPerSecond) }
     private var xPos: CGFloat { CGFloat(live.start) * pixelsPerSecond + 8 }
     private var h: CGFloat { envelopeHeight - 10 }
     private var edgeWidth: CGFloat { min(12, max(8, width * 0.18)) }
@@ -1460,6 +1556,7 @@ private struct ScoreObjectCanvasItem: View {
     var scoreDuration: Double
     var presentation: ScorePresentationMode
     var harmonicColor: Color? = nil
+    var eyesOpacity: Double = 1
     var onSelect: () -> Void
     var onChange: (ScoreObject) -> Void
     var onInteractingChanged: (Bool) -> Void
@@ -1475,7 +1572,7 @@ private struct ScoreObjectCanvasItem: View {
     private var inkColor: Color { harmonicColor ?? .primary }
 
     private var width: CGFloat {
-        max(presentation == .view ? 24 : 36, CGFloat(live.end - live.start) * pixelsPerSecond)
+        max(presentation == .edit ? 36 : 24, CGFloat(live.end - live.start) * pixelsPerSecond)
     }
 
     private var xPos: CGFloat { CGFloat(live.start) * pixelsPerSecond + 8 }
@@ -1484,12 +1581,14 @@ private struct ScoreObjectCanvasItem: View {
 
     var body: some View {
         Group {
-            if presentation == .view {
-                viewerBody
-            } else {
+            if presentation == .edit {
                 editorBody
+            } else {
+                viewerBody
             }
         }
+        .opacity(eyesOpacity)
+        .scaleEffect(presentation == .eyes && eyesOpacity > 0.85 ? 1.06 : 1.0, anchor: .leading)
         .offset(x: xPos, y: yPos)
     }
 
